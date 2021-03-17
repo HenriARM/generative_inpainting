@@ -1,0 +1,15 @@
+neuralgym  # pip install git+https://github.com/JiahuiYu/neuralgym
+cv2 # opencv-python
+# tensorflow==1.15
+# pyyaml
+# Pillow
+
+
+# python test.py --image ./examples/case1_input.png --mask ./examples/case1_mask.png --output ./examples/case1_output.png --checkpoint ./model_logs
+
+# raw - image with camera
+# mask - white mask
+# input - input to NN for training (raw image + white mask, cropped)
+# output - generated infill
+
+# Start with tf 1.7
