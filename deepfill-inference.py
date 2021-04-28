@@ -12,13 +12,9 @@ from inpaint_model import InpaintCAModel
 # import tensorflow.compat.v1 as tf
 # tf.disable_v2_behavior()
 
-CHECKPOINT_DIR = './model_logs'
-# CHECKPOINT_DIR = './model_logs'
-INPUT_SIZE = 512  # input image size for Generator
-
-W = 512
-# W = 680
-H = 512
+# CHECKPOINT_DIR = '/home/rudolfs/Desktop/generative_inpainting/celebhq-256'
+CHECKPOINT_DIR = '/home/rudolfs/Desktop/generative_inpainting/placesv2-512'
+INPUT_SIZE = 1024 #512  # input image size for Generator
 
 
 def inference(image, mask):
@@ -32,7 +28,7 @@ def inference(image, mask):
     sess = tf.Session(config=sess_config)
 
     model = InpaintCAModel()
-    input_image_ph = tf.placeholder(tf.float32, shape=(1, H, W * 2, 3))
+    input_image_ph = tf.placeholder(tf.float32, shape=(1, INPUT_SIZE, INPUT_SIZE * 2, 3))
     output = model.build_server_graph(FLAGS, input_image_ph, reuse=tf.AUTO_REUSE)
     output = (output + 1.) * 127.5
     output = tf.reverse(output, [-1])
@@ -91,7 +87,7 @@ def main():
     # args.masks = '/Users/henrygabrielyan/Desktop/projects/g360/generative_inpainting/mask'
     # args.output_dir = './output-pad-200'  # output directory
     # args.comparison_dir = './compare'  # output directory
-    args.tmp_dir = 'deepfill-pano-pad-0p5'
+    args.tmp_dir = 'deepfill-pano-1024-nonscale-pad-100' #'deepfill-pano-nonscale-pad-100'
 
     paths_image, paths_mask = read_paths(args)
     # if not os.path.exists(args.output_dir):
@@ -107,7 +103,6 @@ def main():
         print(path_image, path_mask)
         # raw mask bg 0, fg 1
         raw_mask = cv2.imread(path_mask)
-        # TODO: change
         raw_mask = cv2.cvtColor(raw_mask, cv2.COLOR_RGB2BGR)
 
         # convert mask to grayscale and threshold
@@ -134,10 +129,13 @@ def main():
 
             # ========= CROPPING CAMERA =======================
             # calculate crop size as closest integer of [max(camera_w, camera_h) + padding] -> reshape(512,512)
-            padding = int(max(w, h) * 0.5)
-            crop_size = find_closest_dividend(max(w, h) + padding)
-            print(f'Crop size {crop_size}')
-            # continue
+            # padding = int(max(w, h) * 0,5)
+            # crop_size = find_closest_dividend(max(w, h) + padding)
+            padding = 100
+            crop_size = max(INPUT_SIZE, max(w,h) + 2 * padding)
+            print(f'crop size = {crop_size}')
+            print(f'old crop size = {find_closest_dividend(max(w, h) + 2 * padding)}')
+            
 
             # since we want bbox to be in center of crop, we need to calculate same crop padding to each sides of it
             crop_add_left = crop_add_right = (crop_size - w) // 2
