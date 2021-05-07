@@ -1,13 +1,11 @@
-{
-    "configurations": [
-        {
-            "name": "Python: Current File",
-            "type": "python",
-            "request": "launch",
-            // "program": "./scrape.py",
-            // "program": "./inference.py",
-            "program": "./deepfill-inference.py",
-            "console": "integratedTerminal"
-        }
-    ]
-}
+// {
+//     "configurations": [
+//         {
+//             "name": "Python: Current File",
+//             "type": "python",
+//             "request": "launch",
+//             "program": "./inference.py",
+//             "console": "integratedTerminal"
+//         }
+//     ]
+// }

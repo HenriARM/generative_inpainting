@@ -9,10 +9,13 @@ import neuralgym as ng
 import tensorflow as tf
 from inpaint_model import InpaintCAModel
 
+# import receptive_field as rf
+
+
 # import tensorflow.compat.v1 as tf
 # tf.disable_v2_behavior()
 
-CHECKPOINT_DIR = './model_logs'
+CHECKPOINT_DIR = './placesv2-512'
 INPUT_SIZE = 512  # input image size for Generator
 
 W = 512
@@ -85,7 +88,7 @@ def main():
     parser = argparse.ArgumentParser()
     args = parser.parse_args()
 
-    args.dataset = '/Users/henrygabrielyan/Desktop/projects/g360/datasets/fetch1'
+    args.dataset = '/home/rudolfs/Desktop/camera-removal/pano'
     # args.images = '/Users/henrygabrielyan/Desktop/projects/g360/generative_inpainting/image'
     # args.masks = '/Users/henrygabrielyan/Desktop/projects/g360/generative_inpainting/mask'
     args.output_dir = './output-pad-200'  # output directory
