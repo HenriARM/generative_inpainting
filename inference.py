@@ -1,7 +1,7 @@
 import numpy as np
 from cv2 import cv2
 import os
-from utils import get_bboxes, dilate_image, remove_noise
+import utils
 import glob
 import argparse
 import neuralgym as ng
@@ -19,7 +19,6 @@ CHECKPOINT_DIR = './placesv2-512'
 INPUT_SIZE = 512  # input image size for Generator
 
 W = 512
-# W = 680
 H = 512
 
 
@@ -89,24 +88,17 @@ def main():
     args = parser.parse_args()
 
     args.dataset = '/home/rudolfs/Desktop/camera-removal/pano'
-    # args.images = '/Users/henrygabrielyan/Desktop/projects/g360/generative_inpainting/image'
-    # args.masks = '/Users/henrygabrielyan/Desktop/projects/g360/generative_inpainting/mask'
-    args.output_dir = './output-pad-200'  # output directory
-    # args.comparison_dir = './compare'  # output directory
+    args.output_dir = './output'  # output directory
 
-    paths_image, paths_mask = read_paths(args)
+    paths_image, paths_mask = utils.read_paths(args)
+
     if not os.path.exists(args.output_dir):
         os.makedirs(args.output_dir)
-
-    # if not os.path.exists(args.comparison_dir):
-    #     os.makedirs(args.comparison_dir)
 
     for path_image, path_mask in zip(paths_image, paths_mask):
         print(path_image, path_mask)
         # raw mask bg 0, fg 1
         raw_mask = cv2.imread(path_mask)
-        # TODO: change
-        raw_mask = cv2.cvtColor(raw_mask, cv2.COLOR_RGB2BGR)
 
         # convert mask to grayscale and threshold
         mask = cv2.cvtColor(raw_mask, cv2.COLOR_BGR2GRAY)
@@ -120,57 +112,17 @@ def main():
             print("image doesn't have any contours")
             continue
 
-        # get bounding boxes and erase small masks
-        bboxes, mask = get_bboxes(contours=contours, mask=mask)
-
+        # get bounding boxes
+        bboxes, mask = utils.get_bboxes(contours=contours, mask=mask)
         image = cv2.imread(path_image)
-        image_y = image.shape[0]
-        image_x = image.shape[1]
-
-        for bbox in bboxes:
-            x, y, w, h = bbox
-
-            # ========= CROPPING CAMERA =======================
-            # calculate crop size as closest integer of [max(camera_w, camera_h) + padding] -> reshape(512,512)
-            padding = 200 #int(max(w, h) * 0.5)
-            crop_size = find_closest_dividend(max(w, h) + padding)
-            print(f'Crop size {crop_size}')
-            # continue
-
-            # since we want bbox to be in center of crop, we need to calculate same crop padding to each sides of it
-            crop_add_left = crop_add_right = (crop_size - w) // 2
-            if (crop_size - w) % 2 != 0:
-                crop_add_right += 1
-
-            crop_add_top = crop_add_bottom = (crop_size - h) // 2
-            if (crop_size - h) % 2 != 0:
-                crop_add_bottom += 1
-
-            # it could be bbox is to close to image edges, take residual crop from other side
-            if x < crop_add_left:
-                crop_add_right += crop_add_left - x
-                crop_add_left = x
-            elif x + w + crop_add_right > image_x:
-                crop_add_left += x + w + crop_add_right - image_x
-                crop_add_right = image_x
-
-            if y < crop_add_top:
-                crop_add_bottom += crop_add_top - y
-                crop_add_top = y
-            elif y + h + crop_add_bottom > image_y:
-                crop_add_top += y + h + crop_add_bottom - image_y
-                crop_add_bottom = image_y
+        for idx, bbox in enumerate(bboxes):
+            # use image center (approximate removing of floor and ceiling)
+            image_center = image[int(0.4 * image.shape[0]):int(0.82 * image.shape[0]), :]
+            x, y, w, h = utils.calc_bbox_with_pad(bbox=bbox, image=image_center)
 
             # since our pano is very big, we crop from it without resizing as in official source
-            mask_large = mask[y - crop_add_top: y + h + crop_add_bottom, x - crop_add_left: x + w + crop_add_right]
-            image_large = image[y - crop_add_top: y + h + crop_add_bottom, x - crop_add_left: x + w + crop_add_right,
-                          :]
-
-            # TODO: change
-            # # normalize
-            # # mask_large = mask_large.astype(np.float32) / 255.
-            # mask_large = mask_large.astype(np.float32) / 255.
-            # image_large = image_large.astype(np.float32)
+            mask_large = mask[y:y+h, x:x+w]
+            image_large = image[y:y+h, x:x+w]
 
             # downsample
             image_512 = cv2.resize(image_large, (INPUT_SIZE, INPUT_SIZE))

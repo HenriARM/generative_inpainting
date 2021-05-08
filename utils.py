@@ -1,6 +1,21 @@
 import numpy as np
 import cv2
 import os
+import glob
+
+
+# tmp
+INPUT_SIZE = 512
+
+
+def sort(str_lst):
+    return [s for s in sorted(str_lst)]
+
+
+def read_paths(args):
+    paths_image = glob.glob(args.dataset + '/*_hdrnet.jpg')
+    paths_mask = glob.glob(args.dataset + '/*_inpainted_mask.png')
+    return sort(paths_image), sort(paths_mask)
 
 
 # Get bounding boxes from contours and merge them if they are within a threshold in px
@@ -80,26 +95,73 @@ def bbox_overlap(b1, b2, threshold):
         return b1
 
 
-def remove_noise(img):
-    # Removes small specks from the image, adds some thickness to the mask
-    # Opening - remove noise
-    kernel = np.ones((3, 3), np.uint8)
-    img = cv2.morphologyEx(img, cv2.MORPH_OPEN, kernel, iterations=1)
-    # # Add some thickness to mask
-    # kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
-    # img = cv2.morphologyEx(img, cv2.MORPH_CLOSE, kernel, iterations=1)
-    # img = cv2.morphologyEx(img, cv2.MORPH_DILATE, kernel, iterations=1)
-    return img
+def find_closest_dividend(dividend):
+    divisor = INPUT_SIZE
+    """
+    dividend / divisor = quotient
+    closest integer >= divident / 512 (INPUT_IMAGE) = any integer >= 1 (mod 512 = 0)
+    :return:
+    """
+    if dividend % divisor == 0:
+        return divident
+    else:
+        return ((dividend // divisor) + 1) * divisor
 
 
-def dilate_image(img):
-    """
-    Expands the mask, used for finding regions of interest
-    https://docs.opencv.org/3.4/d9/d61/tutorial_py_morphological_ops.html
-    """
-    # kernel = np.ones((11, 11), np.uint8)
-    # img = cv2.morphologyEx(img, cv2.MORPH_OPEN, kernel)
-    # Add some thickness to mask
-    kernel = np.ones((19, 19), np.uint8)
-    img = cv2.morphologyEx(img, cv2.MORPH_DILATE, kernel, iterations=8)
-    return img
+def calc_bbox_with_pad(bbox, image):
+    # TODO: catch cases when padding is bigger than left space to crop
+    image_y = image.shape[0]
+    image_x = image.shape[1]
+    x, y, w, h = bbox
+    pad = 300
+    crop_size = find_closest_dividend(max(w, h) + pad)  # int(max(w, h) * 0.5)
+    
+    # since we want bbox to be in center of crop, we need to calculate same crop padding to each sides of it
+    pad_left = pad_right = (crop_size - w) // 2
+    if (crop_size - w) % 2 != 0:
+        pad_right += 1
+
+    pad_top = pad_bottom = (crop_size - h) // 2
+    if (crop_size - h) % 2 != 0:
+        pad_bottom += 1
+
+    # it could be bbox is to close to image edges, take residual crop from other side
+    if x < pad_left:
+        pad_right += pad_left - x
+        pad_left = x
+    elif x + w + pad_right > image_x:
+        pad_left += x + w + pad_right - image_x
+        pad_right = image_x
+
+    if y < pad_top:
+        pad_bottom += pad_top - y
+        pad_top = y
+    elif y + h + pad_bottom > image_y:
+        pad_top += y + h + pad_bottom - image_y
+        pad_bottom = image_y
+
+    return x - pad_left, y - pad_top, w + pad_right, h + pad_bottom
+
+# def remove_noise(img):
+#     # Removes small specks from the image, adds some thickness to the mask
+#     # Opening - remove noise
+#     kernel = np.ones((3, 3), np.uint8)
+#     img = cv2.morphologyEx(img, cv2.MORPH_OPEN, kernel, iterations=1)
+#     # # Add some thickness to mask
+#     # kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
+#     # img = cv2.morphologyEx(img, cv2.MORPH_CLOSE, kernel, iterations=1)
+#     # img = cv2.morphologyEx(img, cv2.MORPH_DILATE, kernel, iterations=1)
+#     return img
+
+
+# def dilate_image(img):
+#     """
+#     Expands the mask, used for finding regions of interest
+#     https://docs.opencv.org/3.4/d9/d61/tutorial_py_morphological_ops.html
+#     """
+#     # kernel = np.ones((11, 11), np.uint8)
+#     # img = cv2.morphologyEx(img, cv2.MORPH_OPEN, kernel)
+#     # Add some thickness to mask
+#     kernel = np.ones((19, 19), np.uint8)
+#     img = cv2.morphologyEx(img, cv2.MORPH_DILATE, kernel, iterations=8)
+#     return img
