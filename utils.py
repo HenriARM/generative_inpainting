@@ -4,10 +4,6 @@ import os
 import glob
 
 
-# tmp
-INPUT_SIZE = 512
-
-
 def sort(str_lst):
     return [s for s in sorted(str_lst)]
 
@@ -95,8 +91,8 @@ def bbox_overlap(b1, b2, threshold):
         return b1
 
 
-def find_closest_dividend(dividend):
-    divisor = INPUT_SIZE
+def find_closest_dividend(dividend, input_size):
+    divisor = input_size
     """
     dividend / divisor = quotient
     closest integer >= divident / 512 (INPUT_IMAGE) = any integer >= 1 (mod 512 = 0)
@@ -108,14 +104,15 @@ def find_closest_dividend(dividend):
         return ((dividend // divisor) + 1) * divisor
 
 
-def calc_bbox_with_pad(bbox, image):
+def calc_bbox_with_pad(bbox, image, input_size):
     # TODO: catch cases when padding is bigger than left space to crop
+    # TODO: catch cases when crop_size is too big to capture, not enough space
+
     image_y = image.shape[0]
     image_x = image.shape[1]
     x, y, w, h = bbox
     pad = 300
-    crop_size = find_closest_dividend(max(w, h) + pad)  # int(max(w, h) * 0.5)
-    
+    crop_size = max(input_size, max(w,h) + pad) # find_closest_dividend(max(w, h) + pad)
     # since we want bbox to be in center of crop, we need to calculate same crop padding to each sides of it
     pad_left = pad_right = (crop_size - w) // 2
     if (crop_size - w) % 2 != 0:
@@ -140,7 +137,7 @@ def calc_bbox_with_pad(bbox, image):
         pad_top += y + h + pad_bottom - image_y
         pad_bottom = image_y
 
-    return x - pad_left, y - pad_top, w + pad_right, h + pad_bottom
+    return x - pad_left, y - pad_top, crop_size
 
 # def remove_noise(img):
 #     # Removes small specks from the image, adds some thickness to the mask

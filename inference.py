@@ -9,31 +9,18 @@ import neuralgym as ng
 import tensorflow as tf
 from inpaint_model import InpaintCAModel
 
-# import receptive_field as rf
-
-
-# import tensorflow.compat.v1 as tf
-# tf.disable_v2_behavior()
-
 CHECKPOINT_DIR = './placesv2-512'
 INPUT_SIZE = 512  # input image size for Generator
 
-W = 512
-H = 512
-
 
 def inference(image, mask):
-    # TODO: reshape to W and H if needed
-
     FLAGS = ng.Config('inpaint.yml')
-    # print(FLAGS)
-
     sess_config = tf.ConfigProto()
     sess_config.gpu_options.allow_growth = True
     sess = tf.Session(config=sess_config)
 
     model = InpaintCAModel()
-    input_image_ph = tf.placeholder(tf.float32, shape=(1, H, W * 2, 3))
+    input_image_ph = tf.placeholder(tf.float32, shape=(1, INPUT_SIZE, INPUT_SIZE * 2, 3))
     output = model.build_server_graph(FLAGS, input_image_ph, reuse=tf.AUTO_REUSE)
     output = (output + 1.) * 127.5
     output = tf.reverse(output, [-1])
@@ -58,29 +45,6 @@ def inference(image, mask):
     output_image = sess.run(output, feed_dict={input_image_ph: input_image})
     output_image = output_image[0][:, :, ::-1]
     return output_image
-
-
-def sort(str_lst):
-    return [s for s in sorted(str_lst)]
-
-
-def read_paths(args):
-    paths_image = glob.glob(args.dataset + '/*_hdrnet.jpg')
-    paths_mask = glob.glob(args.dataset + '/*_inpainted_mask.png')
-    return sort(paths_image), sort(paths_mask)
-
-
-def find_closest_dividend(dividend):
-    divisor = INPUT_SIZE
-    """
-    dividend / divisor = quotient
-    closest integer >= divident / 512 (INPUT_IMAGE) = any integer >= 1 (mod 512 = 0)
-    :return:
-    """
-    if dividend % divisor == 0:
-        return divident
-    else:
-        return ((dividend // divisor) + 1) * divisor
 
 
 def main():
@@ -112,26 +76,51 @@ def main():
             print("image doesn't have any contours")
             continue
 
-        # get bounding boxes
+        # get bounding boxes (returned filtered mask)
         bboxes, mask = utils.get_bboxes(contours=contours, mask=mask)
+
+        if not bboxes:
+            print("image doesn't have any bboxes")
+            continue
+
         image = cv2.imread(path_image)
         for idx, bbox in enumerate(bboxes):
+            # x, y, crop_size = utils.calc_bbox_with_pad(bbox=bbox, image=image, input_size=INPUT_SIZE)
             # use image center (approximate removing of floor and ceiling)
-            image_center = image[int(0.4 * image.shape[0]):int(0.82 * image.shape[0]), :]
-            x, y, w, h = utils.calc_bbox_with_pad(bbox=bbox, image=image_center)
+            center_top = int(0.4 * image.shape[0])
+            center_bottom = int(0.82 * image.shape[0])
+            image_center = image[center_top:center_bottom, :]
+            bbox_center = (bbox[0], bbox[1] - center_top, bbox[2], bbox[3])
+            x, y_center, crop_size = utils.calc_bbox_with_pad(bbox=bbox_center, image=image_center, input_size=INPUT_SIZE)
+            y = y_center + center_top
 
             # since our pano is very big, we crop from it without resizing as in official source
-            mask_large = mask[y:y+h, x:x+w]
-            image_large = image[y:y+h, x:x+w]
+            mask_large = mask[y:y+crop_size, x:x+crop_size]
+            image_large = image[y:y+crop_size, x:x+crop_size]
 
             # downsample
             image_512 = cv2.resize(image_large, (INPUT_SIZE, INPUT_SIZE))
             mask_512 = cv2.resize(mask_large, (INPUT_SIZE, INPUT_SIZE))
             mask_512 = np.expand_dims(mask_512, axis=2)
 
-            output_512 = inference(image_512, mask_512)
-            filename = args.output_dir + '/' + os.path.splitext(os.path.basename(path_image))[0] + '_compare.jpg'
-            cv2.imwrite(filename, output_512)
+            inpaint_512 = inference(image_512, mask_512)
+            inpaint_512_large = cv2.resize(inpaint_512, (crop_size, crop_size), interpolation=cv2.INTER_LINEAR)
+
+            # paste the hole region to the original raw image
+            mask_large = np.expand_dims(mask_large, axis=2)
+            mask_large = mask_large / 255.
+            output_large = inpaint_512_large * mask_large + image_large * (1. - mask_large)
+            output_large = output_large.astype(np.uint8)
+
+            # put output into pano
+            image[y:y+crop_size, x:x+crop_size] = output_large
+
+
+            # filename = os.path.join(args.output_dir,os.path.splitext(os.path.basename(path_image))[0] + '_inpaint.jpg')
+            # cv2.imwrite(filename, output_large)
+
+        filename = os.path.join(args.output_dir, os.path.splitext(os.path.basename(path_image))[0] + '_inpaint.jpg')
+        cv2.imwrite(filename, image)
 
 
 if __name__ == "__main__":
