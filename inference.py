@@ -11,6 +11,7 @@ from inpaint_model import InpaintCAModel
 
 CHECKPOINT_DIR = './placesv2-512'
 INPUT_SIZE = 512  # input image size for Generator
+INPAINT_SUFFIX = '_inpaint.jpg'
 
 
 def inference(image, mask):
@@ -119,7 +120,7 @@ def main():
             # filename = os.path.join(args.output_dir,os.path.splitext(os.path.basename(path_image))[0] + '_inpaint.jpg')
             # cv2.imwrite(filename, output_large)
 
-        filename = os.path.join(args.output_dir, os.path.splitext(os.path.basename(path_image))[0] + '_inpaint.jpg')
+        filename = os.path.join(args.output_dir, os.path.splitext(os.path.basename(path_image))[0] + INPAINT_SUFFIX)
         cv2.imwrite(filename, image)
 
 
