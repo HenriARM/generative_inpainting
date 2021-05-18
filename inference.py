@@ -10,7 +10,7 @@ import tensorflow as tf
 from inpaint_model import InpaintCAModel
 
 CHECKPOINT_DIR = './placesv2-512'
-INPUT_SIZE = 512  # input image size for Generator
+INPUT_SIZE = 768  # input image size for Generator 512
 INPAINT_SUFFIX = '_inpaint.jpg'
 
 
@@ -52,8 +52,8 @@ def main():
     parser = argparse.ArgumentParser()
     args = parser.parse_args()
 
-    args.dataset = '/home/rudolfs/Desktop/camera-removal/pano'
-    args.output_dir = './output'  # output directory
+    args.dataset = '/home/rudolfs/Desktop/reports/report-13-05-2021/data-report-13-05-2021'
+    args.output_dir = './deep-768in-100pad-report-13-05-2021'  # output directory
 
     paths_image, paths_mask = utils.read_paths(args)
 
