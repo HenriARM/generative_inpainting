@@ -8,9 +8,9 @@ def sort(str_lst):
     return [s for s in sorted(str_lst)]
 
 
-def read_paths(args):
-    paths_image = glob.glob(args.dataset + '/*_hdrnet.jpg')
-    paths_mask = glob.glob(args.dataset + '/*_inpainted_mask.png')
+def read_paths(dataset_path, image_suffix, mask_suffix):
+    paths_image = glob.glob(dataset_path + '/*' + image_suffix)
+    paths_mask = glob.glob(dataset_path + '/*' + mask_suffix)
     return sort(paths_image), sort(paths_mask)
 
 
@@ -111,7 +111,7 @@ def calc_bbox_with_pad(bbox, image, input_size):
     image_y = image.shape[0]
     image_x = image.shape[1]
     x, y, w, h = bbox
-    pad = 100
+    pad = 300
     crop_size = max(input_size, max(w,h) + pad) # find_closest_dividend(max(w, h) + pad)
     # since we want bbox to be in center of crop, we need to calculate same crop padding to each sides of it
     pad_left = pad_right = (crop_size - w) // 2
