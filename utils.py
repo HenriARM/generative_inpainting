@@ -14,20 +14,16 @@ def read_paths(dataset_path, image_suffix, mask_suffix):
     return sort(paths_image), sort(paths_mask)
 
 
-# Get bounding boxes from contours and merge them if they are within a threshold in px
-def get_bboxes(contours, mask):
+# Get bounding boxes from contours and merge them if they are within a overlap_distance in px
+def get_bboxes(contours, mask, min_bbox_area, overlap_distance):
     if not contours:
         return []
-
-    # tmp
-    MIN_BOX_AREA = 50 * 50
-    THRESHOLD = 350
 
     bboxes = []
     for cnt in contours:
         bbox = cv2.boundingRect(cnt)
         x, y, w, h = bbox
-        if w * h <= MIN_BOX_AREA:
+        if w * h <= min_bbox_area:
             # erase mask pixel
             mask[y:y + h, x:x + w] = 0
         else:
@@ -37,7 +33,7 @@ def get_bboxes(contours, mask):
     # merge intersecting bounding boxes
     merged_bboxes = []
     while len(bboxes) > 1:
-        overlap = bbox_overlap(b1=bboxes[0], b2=bboxes[1], threshold=THRESHOLD)
+        overlap = bbox_overlap(b1=bboxes[0], b2=bboxes[1], overlap_distance=overlap_distance)
         merged_bboxes.append(overlap)
 
         _, _, overlap_w, overlap_h = overlap
@@ -53,11 +49,11 @@ def get_bboxes(contours, mask):
     return merged_bboxes, mask
 
 
-def bbox_overlap(b1, b2, threshold):
+def bbox_overlap(b1, b2, overlap_distance):
     """
     IoU, Calculate intersection of two bounding boxes and returns overlap.
     If bboxes doesn't intersect, b1 will be returned.
-    If distance between two boxes are < threshold, still count as intersect
+    If distance between two boxes are < overlap_distance, still count as intersect
     Each bbox has x,y,w,h
     """
     x, y, w, h = b1
@@ -78,8 +74,8 @@ def bbox_overlap(b1, b2, threshold):
     y_top = max(b1_y1, b2_y1)
     y_bottom = min(b1_y2, b2_y2)
 
-    # check that intersection W and H is not 0 with threshold
-    if x_right + threshold > x_left and y_bottom + threshold > y_top:
+    # check that intersection W and H is not 0 with overlap_distance
+    if x_right + overlap_distance > x_left and y_bottom + overlap_distance > y_top:
         # count as intersection and return overlap
         x_left = min(b1_x1, b2_x1)
         x_right = max(b1_x2, b2_x2)

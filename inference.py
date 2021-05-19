@@ -15,6 +15,9 @@ IMAGE_SUFFIX = '_hdrnet.jpg'
 MASK_SUFFIX = '_inpainted_mask.png'
 INPAINT_SUFFIX = '_inpainted.png'
 
+MIN_BBOX_AREA = 50 * 50
+OVERLAP_DISTANCE = 200
+
 
 def inference(image, mask):
     FLAGS = ng.Config('inpaint.yml')
@@ -80,7 +83,7 @@ def main():
             continue
 
         # get bounding boxes (returned filtered mask)
-        bboxes, mask = utils.get_bboxes(contours=contours, mask=mask)
+        bboxes, mask = utils.get_bboxes(contours=contours, mask=mask, min_bbox_area=MIN_BBOX_AREA, overlap_distance=OVERLAP_DISTANCE)
 
         if not bboxes:
             print("image doesn't have any bboxes")
