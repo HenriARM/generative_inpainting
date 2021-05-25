@@ -107,7 +107,7 @@ def calc_bbox_with_pad(bbox, image, input_size):
     image_y = image.shape[0]
     image_x = image.shape[1]
     x, y, w, h = bbox
-    pad = 300
+    pad = 0
     crop_size = max(input_size, max(w,h) + pad) # find_closest_dividend(max(w, h) + pad)
     # since we want bbox to be in center of crop, we need to calculate same crop padding to each sides of it
     pad_left = pad_right = (crop_size - w) // 2

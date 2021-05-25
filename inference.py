@@ -10,7 +10,7 @@ import tensorflow as tf
 from inpaint_model import InpaintCAModel
 
 CHECKPOINT_DIR = './placesv2-512'
-INPUT_SIZE = 768  # input image size for Generator 512
+INPUT_SIZE = 256  # input image size for Generator 512
 IMAGE_SUFFIX = '_hdrnet.jpg'
 MASK_SUFFIX = '_inpainted_mask.png'
 INPAINT_SUFFIX = '_inpainted.png'
@@ -57,10 +57,10 @@ def main():
     parser = argparse.ArgumentParser()
     args = parser.parse_args()
 
-    args.dataset = '/home/rudolfs/Desktop/reports/report-13-05-2021/data-report-13-05-2021'
-    args.output_dir = './deep-768in-100pad-report-13-05-2021'  # output directory
+    args.dataset = '/home/rudolfs/Desktop/generative_inpainting/input-test'
+    args.output_dir = '/home/rudolfs/Desktop/generative_inpainting/input-test/out'  # output directory
 
-    paths_image, paths_mask = utils.read_paths(dataset_path=dataset_path, image_suffix=IMAGE_SUFFIX, mask_suffix=MASK_SUFFIX)
+    paths_image, paths_mask = utils.read_paths(dataset_path=args.dataset, image_suffix=IMAGE_SUFFIX, mask_suffix=MASK_SUFFIX)
 
     if not os.path.exists(args.output_dir):
         os.makedirs(args.output_dir)
