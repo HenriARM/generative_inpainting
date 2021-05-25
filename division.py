@@ -5,6 +5,7 @@ import utils
 import glob
 import argparse
 import neuralgym as ng
+import time
 
 import tensorflow as tf
 from inpaint_model import InpaintCAModel
@@ -18,8 +19,7 @@ INPAINT_SUFFIX = '_inpainted.png'
 MIN_BBOX_AREA = 50 * 50
 OVERLAP_DISTANCE = 200
 
-
-def inference(image, mask):
+def model_compile():
     FLAGS = ng.Config('inpaint.yml')
     sess_config = tf.ConfigProto()
     sess_config.gpu_options.allow_growth = True
@@ -39,8 +39,11 @@ def inference(image, mask):
         var_value = tf.contrib.framework.load_variable(CHECKPOINT_DIR, from_name)
         assign_ops.append(tf.assign(var, var_value))
     sess.run(assign_ops)
+    print('Model loaded')
+    return sess, input_image_ph, output    
 
-    # TODO: change
+
+def static_inference(sess, input_layer, output_layer, image, mask):
     mask = np.dstack([mask] * 3)
 
     image = np.expand_dims(image, 0)
@@ -48,7 +51,7 @@ def inference(image, mask):
     input_image = np.concatenate([image, mask], axis=2)
 
     # load pretrained model
-    output_image = sess.run(output, feed_dict={input_image_ph: input_image})
+    output_image = sess.run(output_layer, feed_dict={input_layer: input_image})
     output_image = output_image[0][:, :, ::-1]
     return output_image
 
@@ -65,13 +68,15 @@ def main():
     if not os.path.exists(args.output_dir):
         os.makedirs(args.output_dir)
 
-
     args.patch_dir = './patch'
     if not os.path.exists(args.patch_dir):
         os.makedirs(args.patch_dir)
 
+    # compile model
+    sess, input_layer, output_layer = model_compile()    
+
     for path_image, path_mask in zip(paths_image, paths_mask):
-        print(path_image, path_mask)
+        print('Artifact ', path_image, path_mask)
         # raw mask bg 0, fg 1
         raw_mask = cv2.imread(path_mask)
 
@@ -97,6 +102,9 @@ def main():
         image = cv2.imread(path_image)
         artifact_name = os.path.splitext(os.path.basename(path_image))[0]
         for idx, bbox in enumerate(bboxes):
+            Print(f'bbox size {bbox}')
+            t = time.time()                                                                                                                                                                                                                           
+
             x, y, w, h = bbox
             finish_x = x + w
             finish_y = y + h
@@ -110,9 +118,9 @@ def main():
             i = 0
             while py < finish_y:
                 while px < finish_x:
-                    mask_filename = os.path.join(args.patch_dir, artifact_name + f'_{i}_mask.jpg')
-                    image_filename = os.path.join(args.patch_dir, artifact_name + f'_{i}_image.jpg')
-                    inpaint_filename = os.path.join(args.patch_dir, artifact_name + f'_{i}_inpaint.jpg')
+                    # mask_filename = os.path.join(args.patch_dir, artifact_name + f'_{i}_mask.jpg')
+                    # image_filename = os.path.join(args.patch_dir, artifact_name + f'_{i}_image.jpg')
+                    # inpaint_filename = os.path.join(args.patch_dir, artifact_name + f'_{i}_inpaint.jpg')
 
                     mask_patch = mask[py:py+INPUT_SIZE, px:px+INPUT_SIZE]
                     image_patch = image[py:py+INPUT_SIZE, px:px+INPUT_SIZE]
@@ -123,12 +131,14 @@ def main():
 
                     # inference
                     mask_patch = np.expand_dims(mask_patch, axis=2)
-                    inpaint_patch = inference(image_patch, mask_patch)
+
+                    assert image_patch[:,:,0].shape == mask_patch[:,:,0].shape                                                                                                                                                                                                     
+                    inpaint_patch = static_inference(sess, input_layer, output_layer, image_patch, mask_patch)
 
                     # save mask, image and inpaint patches
-                    cv2.imwrite(mask_filename, np.dstack([mask_patch.astype(np.uint8)] * 3))
-                    cv2.imwrite(image_filename, image_patch)
-                    cv2.imwrite(inpaint_filename, inpaint_patch)
+                    #cv2.imwrite(mask_filename, np.dstack([mask_patch.astype(np.uint8)] * 3))
+                    #cv2.imwrite(image_filename, image_patch)
+                    #cv2.imwrite(inpaint_filename, inpaint_patch)
 
                     # leave half of the hole to next patch to inpaint
                     mask_patch = mask_patch / 255.
@@ -159,9 +169,9 @@ def main():
                 px = x - INPUT_SIZE // 2
                 py += stride
 
+        print(f'Time on one bbox {bbox} inference: {time.time() - t}') 
         filename = os.path.join(args.output_dir, os.path.splitext(os.path.basename(path_image))[0] + INPAINT_SUFFIX)
         cv2.imwrite(filename, image)
-        exit(-1)
 
 
 if __name__ == "__main__":
