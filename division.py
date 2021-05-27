@@ -15,6 +15,7 @@ INPUT_SIZE = 256  # input image size for Generator 512
 IMAGE_SUFFIX = '_hdrnet.jpg'
 MASK_SUFFIX = '_inpainted_mask.png'
 INPAINT_SUFFIX = '_inpainted.png'
+LOCAL_CACHE= True
 
 MIN_BBOX_AREA = 50 * 50
 OVERLAP_DISTANCE = 200
@@ -77,6 +78,7 @@ def main():
 
     for path_image, path_mask in zip(paths_image, paths_mask):
         print('Artifact ', path_image, path_mask)
+
         # raw mask bg 0, fg 1
         raw_mask = cv2.imread(path_mask)
 
@@ -100,9 +102,52 @@ def main():
             continue
 
         image = cv2.imread(path_image)
+
+        # check is there any bbox which is too close to artifact vertical edges  
+        is_close = False
+        max_distance = 0
+        thres = 50 # distance from bbox to edge, which we consider too close
+        for bbox in bboxes:
+            x, y, w, h = bbox
+            if x < thres or x + w > image.shape[1] - thres:
+                is_close = True
+                # to calculate max distance from bbox to edge, understand to which edge it is near (we need to copy whole bbox)
+                if x < image.shape[1] - (x + w): # left side closer
+                    max_distance = max(max_distance, x + w)  
+                else: # right side closer
+                    max_distance = max(max_distance, image.shape[1] - x)
+                
+        # assure distance is enough for patching
+        max_distance = max(max_distance, INPUT_SIZE)
+        
+        # add more to distance, so new edge wont touch opposite bbox
+        max_distance += 2 * thres
+                
+        mask = np.expand_dims(mask, axis=2)
+
+        # copy opposite edge
+        if is_close is True:
+            upd_image = np.zeros(shape=(image.shape[0], image.shape[1] + 2 * max_distance, image.shape[2]))
+            upd_image[:, max_distance:-max_distance, :] = np.copy(image)
+            upd_image[:, :max_distance ,:] = np.copy(image[:, -max_distance:, :])
+            upd_image[:, -max_distance:, :] = np.copy(image[:, :max_distance, :])
+            image = upd_image
+
+            upd_mask = np.zeros(shape=(mask.shape[0], mask.shape[1] + 2 * max_distance, mask.shape[2]))
+            upd_mask[:, max_distance:-max_distance, :] = np.copy(mask)
+            upd_mask[:, :max_distance ,:] = np.copy(mask[:, -max_distance:, :])
+            upd_mask[:, -max_distance:, :] = np.copy(mask[:, :max_distance, :])
+            mask = upd_mask
+
+            # adjust x coordinates of bboxes
+            for i in range(len(bboxes)):
+                bboxes[i] = (bboxes[i][0] + max_distance, *bboxes[i][1:])
+        upd_image = None
+        upd_mask = None
+
         artifact_name = os.path.splitext(os.path.basename(path_image))[0]
-        for idx, bbox in enumerate(bboxes):
-            Print(f'bbox size {bbox}')
+        for idx, bbox in enumerate(bboxes):                      
+            print(f'bbox size {bbox}')
             t = time.time()                                                                                                                                                                                                                           
 
             x, y, w, h = bbox
@@ -110,18 +155,14 @@ def main():
             finish_y = y + h
 
             stride = INPUT_SIZE // 4
-            # bbox x0, y0 will be the center of patch 
+
+            # bbox x0, y0 will be the center of patch (if there is enough )
             px = x - INPUT_SIZE // 2
             py = y - INPUT_SIZE // 2
-
 
             i = 0
             while py < finish_y:
                 while px < finish_x:
-                    # mask_filename = os.path.join(args.patch_dir, artifact_name + f'_{i}_mask.jpg')
-                    # image_filename = os.path.join(args.patch_dir, artifact_name + f'_{i}_image.jpg')
-                    # inpaint_filename = os.path.join(args.patch_dir, artifact_name + f'_{i}_inpaint.jpg')
-
                     mask_patch = mask[py:py+INPUT_SIZE, px:px+INPUT_SIZE]
                     image_patch = image[py:py+INPUT_SIZE, px:px+INPUT_SIZE]
 
@@ -129,16 +170,26 @@ def main():
                         px += stride
                         continue
 
-                    # inference
-                    mask_patch = np.expand_dims(mask_patch, axis=2)
+                    if LOCAL_CACHE is True:
+                        # save mask and image
+                        mask_filename = os.path.join(args.patch_dir, artifact_name + f'-bbox{idx}-patch{i}-mask.jpg')
+                        image_filename = os.path.join(args.patch_dir, artifact_name + f'-bbox{idx}-patch{i}-image.jpg')
+                        cv2.imwrite(mask_filename, np.dstack([mask_patch.astype(np.uint8)] * 3))
+                        cv2.imwrite(image_filename, image_patch)
 
-                    assert image_patch[:,:,0].shape == mask_patch[:,:,0].shape                                                                                                                                                                                                     
+                    # check shapes are correct
+                    if image_patch[:,:,0].shape != (INPUT_SIZE, INPUT_SIZE) or \
+                        mask_patch[:,:,0].shape != (INPUT_SIZE, INPUT_SIZE):
+                        print('Incorrect patch size')
+                        exit(-1)
+
+                    # inference
                     inpaint_patch = static_inference(sess, input_layer, output_layer, image_patch, mask_patch)
 
-                    # save mask, image and inpaint patches
-                    #cv2.imwrite(mask_filename, np.dstack([mask_patch.astype(np.uint8)] * 3))
-                    #cv2.imwrite(image_filename, image_patch)
-                    #cv2.imwrite(inpaint_filename, inpaint_patch)
+                    if LOCAL_CACHE is True:
+                        # save inpaint
+                        inpaint_filename = os.path.join(args.patch_dir, artifact_name + f'-bbox{idx}-patch{i}-inpaint.jpg')
+                        cv2.imwrite(inpaint_filename, inpaint_patch)
 
                     # leave half of the hole to next patch to inpaint
                     mask_patch = mask_patch / 255.
@@ -155,14 +206,7 @@ def main():
                     caution = 10
                     partial_mask_patch[:, -stride // 2 - caution:, :] = 0
                     partial_mask_patch[-caution:, :, :] = 0
-                    mask[py:py+INPUT_SIZE, px:px+INPUT_SIZE] = ((mask_patch - partial_mask_patch) * 255.).astype(np.uint8)[:,:,0]
-
-                    # cv2.imshow("mask patch", np.dstack([(mask_patch * 255.).astype(np.uint8)] * 3) )
-                    # cv2.imshow("partial", np.dstack([(partial_mask_patch * 255.).astype(np.uint8)] * 3) )
-                    # cv2.imshow("wtf", np.dstack([((mask_patch - partial_mask_patch) * 255.).astype(np.uint8)] * 3) )
-                    # cv2.waitKey(0)
-                    # cv2.destroyAllWindows()
-                    # exit(-1)
+                    mask[py:py+INPUT_SIZE, px:px+INPUT_SIZE] = ((mask_patch - partial_mask_patch) * 255.).astype(np.uint8)
 
                     i += 1 
                     px += stride
@@ -173,6 +217,8 @@ def main():
         filename = os.path.join(args.output_dir, os.path.splitext(os.path.basename(path_image))[0] + INPAINT_SUFFIX)
         cv2.imwrite(filename, image)
 
-
 if __name__ == "__main__":
     main()
+
+# TODO: numpy array reference
+# TODO: free up memory
