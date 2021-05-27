@@ -15,7 +15,7 @@ INPUT_SIZE = 256  # input image size for Generator 512
 IMAGE_SUFFIX = '_hdrnet.jpg'
 MASK_SUFFIX = '_inpainted_mask.png'
 INPAINT_SUFFIX = '_inpainted.png'
-LOCAL_CACHE= False
+LOCAL_CACHE= True
 
 MIN_BBOX_AREA = 50 * 50
 OVERLAP_DISTANCE = 200
@@ -86,7 +86,7 @@ def main():
         # convert mask to grayscale and threshold
         mask = cv2.cvtColor(raw_mask, cv2.COLOR_BGR2GRAY)
         _, mask = cv2.threshold(mask, 64, 255, cv2.THRESH_BINARY)
-        raw_mask = None
+        # raw_mask = None
 
         if cv2.findNonZero(mask) is None:
             print("image doesn't have non-zero pixels")
@@ -108,7 +108,7 @@ def main():
         # check is there any bbox which is too close to artifact vertical edges  
         is_close = False
         max_distance = 0
-        thres = 50 # distance from bbox to edge, which we consider too close
+        thres = INPUT_SIZE # distance from bbox to edge, which we consider too close
         for bbox in bboxes:
             x, y, w, h = bbox
             if x < thres or x + w > image.shape[1] - thres:
@@ -118,7 +118,7 @@ def main():
                     max_distance = max(max_distance, x + w)  
                 else: # right side closer
                     max_distance = max(max_distance, image.shape[1] - x)
-        x, y, w, h = None, None, None, None
+        # x, y, w, h = None, None, None, None
                 
         # assure distance is enough for patching
         max_distance = max(max_distance, INPUT_SIZE)
@@ -141,12 +141,12 @@ def main():
             upd_mask[:, :max_distance ,:] = np.copy(mask[:, -max_distance:, :])
             upd_mask[:, -max_distance:, :] = np.copy(mask[:, :max_distance, :])
             mask = upd_mask
-
+    
             # adjust x coordinates of bboxes
             for i in range(len(bboxes)):
                 bboxes[i] = (bboxes[i][0] + max_distance, *bboxes[i][1:])
-        upd_image = None
-        upd_mask = None
+        # upd_image = None
+        # upd_mask = None
 
         artifact_name = os.path.splitext(os.path.basename(path_image))[0]
         for idx, bbox in enumerate(bboxes):                      
@@ -157,6 +157,7 @@ def main():
             finish_x = x + w
             finish_y = y + h
 
+            # should be smaller than model input size
             stride = INPUT_SIZE // 4
 
             # bbox x0, y0 will be the center of patch (if there is enough )
@@ -217,6 +218,11 @@ def main():
                 py += stride
 
         print(f'Time on one bbox {bbox} inference: {time.time() - t}') 
+
+        # trim image back to save
+        if is_close:
+            image = image[:, max_distance:-max_distance, :]
+            mask = mask[:, max_distance:-max_distance, :]
         filename = os.path.join(args.output_dir, os.path.splitext(os.path.basename(path_image))[0] + INPAINT_SUFFIX)
         cv2.imwrite(filename, image)
 
