@@ -15,7 +15,7 @@ INPUT_SIZE = 256  # input image size for Generator 512
 IMAGE_SUFFIX = '_hdrnet.jpg'
 MASK_SUFFIX = '_inpainted_mask.png'
 INPAINT_SUFFIX = '_inpainted.png'
-LOCAL_CACHE= True
+LOCAL_CACHE= False
 
 MIN_BBOX_AREA = 50 * 50
 OVERLAP_DISTANCE = 200
@@ -69,9 +69,10 @@ def main():
     if not os.path.exists(args.output_dir):
         os.makedirs(args.output_dir)
 
-    args.patch_dir = './patch'
-    if not os.path.exists(args.patch_dir):
-        os.makedirs(args.patch_dir)
+    if LOCAL_CACHE is True:
+        args.patch_dir = './patch'
+        if not os.path.exists(args.patch_dir):
+            os.makedirs(args.patch_dir)
 
     # compile model
     sess, input_layer, output_layer = model_compile()    
@@ -85,6 +86,7 @@ def main():
         # convert mask to grayscale and threshold
         mask = cv2.cvtColor(raw_mask, cv2.COLOR_BGR2GRAY)
         _, mask = cv2.threshold(mask, 64, 255, cv2.THRESH_BINARY)
+        raw_mask = None
 
         if cv2.findNonZero(mask) is None:
             print("image doesn't have non-zero pixels")
@@ -116,6 +118,7 @@ def main():
                     max_distance = max(max_distance, x + w)  
                 else: # right side closer
                     max_distance = max(max_distance, image.shape[1] - x)
+        x, y, w, h = None, None, None, None
                 
         # assure distance is enough for patching
         max_distance = max(max_distance, INPUT_SIZE)
@@ -219,6 +222,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-# TODO: numpy array reference
-# TODO: free up memory
