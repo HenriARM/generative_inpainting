@@ -15,7 +15,7 @@ INPUT_SIZE = 256  # input image size for Generator 512
 IMAGE_SUFFIX = '_hdrnet.jpg'
 MASK_SUFFIX = '_inpainted_mask.png'
 INPAINT_SUFFIX = '_inpainted.png'
-LOCAL_CACHE= True
+LOCAL_CACHE= False
 
 MIN_BBOX_AREA = 50 * 50
 OVERLAP_DISTANCE = 200
@@ -61,6 +61,7 @@ def main():
     parser = argparse.ArgumentParser()
     args = parser.parse_args()
 
+    # args.dataset = '/mnt/machine_learning/datasets/hm_dataset/reports/report-13-05-2021/data'
     args.dataset = '/home/rudolfs/Desktop/reports/report-13-05-2021/data'
     args.output_dir = './output'  # output directory
 
