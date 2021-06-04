@@ -2,9 +2,16 @@ import os
 import glob
 
 import tensorflow as tf
+tf.get_logger().setLevel('ERROR')
 import neuralgym as ng
 
 from inpaint_model import InpaintCAModel
+import utils
+import argparse
+import random
+
+
+IMAGE_SUFFIX = '_hdrnet.jpg'
 
 
 def multigpu_graph_def(model, FLAGS, data, gpu_id=0, loss_type='g'):
@@ -24,37 +31,47 @@ def multigpu_graph_def(model, FLAGS, data, gpu_id=0, loss_type='g'):
         raise ValueError('loss type is not supported.')
 
 
-if __name__ == "__main__":
+def main():
+    parser = argparse.ArgumentParser()
+    args = parser.parse_args()
+    args.dataset = '/home/rudolfs/Desktop/reports/report-test'
     # training data
     FLAGS = ng.Config('inpaint.yml')
     img_shapes = FLAGS.img_shapes
-    with open(FLAGS.data_flist[FLAGS.dataset][0]) as f:
-        fnames = f.read().splitlines()
-    if FLAGS.guided:
-        fnames = [(fname, fname[:-4] + '_edge.jpg') for fname in fnames]
-        img_shapes = [img_shapes, img_shapes]
+    fnames = glob.glob(args.dataset + '/*' + IMAGE_SUFFIX)
+    if len(fnames) == 0:
+        print('error')
+        exit(-1)
+    fnames = utils.sort(fnames)
+
+    # if FLAGS.guided:
+    #     fnames = [(fname, fname[:-4] + '_edge.jpg') for fname in fnames]
+    #     img_shapes = [img_shapes, img_shapes]
     data = ng.data.DataFromFNames(
-        fnames, img_shapes, random_crop=FLAGS.random_crop,
-        nthreads=FLAGS.num_cpus_per_job)
+        fnames, img_shapes, random=True, random_crop=FLAGS.random_crop, nthreads=FLAGS.num_cpus_per_job)
     images = data.data_pipeline(FLAGS.batch_size)
     # main model
     model = InpaintCAModel()
     g_vars, d_vars, losses = model.build_graph_with_losses(FLAGS, images)
     # validation images
+
     if FLAGS.val:
-        with open(FLAGS.data_flist[FLAGS.dataset][1]) as f:
-            val_fnames = f.read().splitlines()
-        if FLAGS.guided:
-            val_fnames = [
-                (fname, fname[:-4] + '_edge.jpg') for fname in val_fnames]
+        # shuffle data and split
+        # TODO
+        val_fnames = fnames.copy() # random.shuffle(fnames)
+        # if FLAGS.guided:
+        #     val_fnames = [
+        #         (fname, fname[:-4] + '_edge.jpg') for fname in val_fnames]
         # progress monitor by visualizing static images
         for i in range(FLAGS.static_view_size):
             static_fnames = val_fnames[i:i+1]
             static_images = ng.data.DataFromFNames(
                 static_fnames, img_shapes, nthreads=1,
-                random_crop=FLAGS.random_crop).data_pipeline(1)
+                random=True, random_crop=FLAGS.random_crop).data_pipeline(1)
             static_inpainted_images = model.build_static_infer_graph(
                 FLAGS, static_images, name='static_view/%d' % i)
+
+
     # training settings
     lr = tf.get_variable(
         'lr', shape=[], trainable=False,
@@ -94,9 +111,25 @@ if __name__ == "__main__":
     trainer.add_callbacks([
         discriminator_training_callback,
         ng.callbacks.WeightsViewer(),
-        ng.callbacks.ModelRestorer(trainer.context['saver'], dump_prefix=FLAGS.model_restore+'/snap', optimistic=True),
-        ng.callbacks.ModelSaver(FLAGS.train_spe, trainer.context['saver'], FLAGS.log_dir+'/snap'),
-        ng.callbacks.SummaryWriter((FLAGS.val_psteps//1), trainer.context['summary_writer'], tf.summary.merge_all()),
+        ng.callbacks.ModelRestorer(trainer.context['saver'], dump_prefix=FLAGS.log_dir+'/snap', optimistic=True),
+        ng.callbacks.ModelSaver(FLAGS.train_spe, trainer.context['saver'], FLAGS.log_dir+'/snap'), 
+        ng.callbacks.SummaryWriter((FLAGS.val_psteps), trainer.context['summary_writer'], tf.summary.merge_all()),
     ])
     # launch training
     trainer.train()
+
+# TODO: enable Tensorboard tensorboard --logdir /home/rudolfs/Desktop/generative_inpainting/training --port 6006
+# TODO: divide train data onto validation data
+
+# TODO: check all gpu and cpu / cpu_id gpu_id is used
+
+# TODO: Tensorboard add image results
+# TODO: send to random_crop center of image
+# TODO: SummaryWritter callback
+
+# TODO: store best loss, best epoch
+# TODO: add run.sh
+
+
+if __name__ == "__main__":
+    main()

@@ -6,7 +6,7 @@ cv2 # opencv-python
 # python mandatory 3.6, to install conda tensorflow-gpu
 # conda create --name=deepfill_off python=3.6
 # conda env remove -n ENV_NAME
-# conda install tensorflow-gpu==1.5.0
+# conda install tensorflow-gpu==1.9.0
 
 # python test.py --image ./examples/case1_input.png --mask ./examples/case1_mask.png --output ./examples/case1_output.png --checkpoint ./model_logs
 
