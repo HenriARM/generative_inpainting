@@ -48,10 +48,6 @@ def main():
     vlen = len(datapaths) * 2 // 3
     fnames, val_fnames = datapaths[:vlen], datapaths[vlen:]
 
-
-    # if FLAGS.guided:
-    #     fnames = [(fname, fname[:-4] + '_edge.jpg') for fname in fnames]
-    #     img_shapes = [img_shapes, img_shapes]
     data = ng.data.DataFromFNames(
         fnames, img_shapes, random=True, random_crop=FLAGS.random_crop, nthreads=FLAGS.num_cpus_per_job)
     images = data.data_pipeline(FLAGS.batch_size)
@@ -61,10 +57,6 @@ def main():
     # validation images
 
     if FLAGS.val:
-        # if FLAGS.guided:
-        #     val_fnames = [
-        #         (fname, fname[:-4] + '_edge.jpg') for fname in val_fnames]
-        # progress monitor by visualizing static images
         for i in range(FLAGS.static_view_size):
             static_fnames = val_fnames[i:i+1]
             static_images = ng.data.DataFromFNames(
@@ -124,7 +116,7 @@ def main():
 # TODO: check all gpu and cpu / cpu_id gpu_id is used
 # TODO: send to random_crop center of image
 
-# TODO: understand Hing loses (gan_hinge_loss() in /home/rudolfs/Desktop/generative_inpainting/inpaint_model.py)
+# TODO: understand Hinge loses (gan_hinge_loss() in /home/rudolfs/Desktop/generative_inpainting/inpaint_model.py)
 # TODO: learn how to use Tensorboard with tf
 # TODO: learn how to use graphs in Tensorboard
 # TODO: understand how kernel_spectral_norm in neuralgym/ops/gan_ops.py
