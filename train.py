@@ -54,8 +54,8 @@ def main():
     # main model
     model = InpaintCAModel()
     g_vars, d_vars, losses = model.build_graph_with_losses(FLAGS, images)
-    # validation images
 
+    # validation images
     if FLAGS.val:
         for i in range(FLAGS.static_view_size):
             static_fnames = val_fnames[i:i+1]
@@ -72,9 +72,8 @@ def main():
         initializer=tf.constant_initializer(1e-4))
     d_optimizer = tf.train.AdamOptimizer(lr, beta1=0.5, beta2=0.999)
     g_optimizer = d_optimizer
-    # train discriminator with secondary trainer, should initialize before
-    # primary trainer.
-    # discriminator_training_callback = ng.callbacks.SecondaryTrainer(
+
+    # train discriminator with secondary trainer, should initialize before primary trainer.
     discriminator_training_callback = ng.callbacks.SecondaryMultiGPUTrainer(
         num_gpus=FLAGS.num_gpus_per_job,
         pstep=1,
@@ -86,8 +85,8 @@ def main():
         graph_def_kwargs={
             'model': model, 'FLAGS': FLAGS, 'data': data, 'loss_type': 'd'},
     )
+
     # train generator with primary trainer
-    # trainer = ng.train.Trainer(
     trainer = ng.train.MultiGPUTrainer(
         num_gpus=FLAGS.num_gpus_per_job,
         optimizer=g_optimizer,
@@ -101,6 +100,7 @@ def main():
         spe=FLAGS.train_spe,
         log_dir=FLAGS.log_dir,
     )
+
     # add all callbacks
     trainer.add_callbacks([
         discriminator_training_callback,
@@ -112,14 +112,14 @@ def main():
     # launch training
     trainer.train()
 
-# TODO: tensorboard check image summary for validation is updated
-# TODO: check all gpu and cpu / cpu_id gpu_id is used
+# TODO: tensorboard - batch incomplete is not inpainted, recheck
 # TODO: send to random_crop center of image
 
-# TODO: understand Hinge loses (gan_hinge_loss() in /home/rudolfs/Desktop/generative_inpainting/inpaint_model.py)
-# TODO: learn how to use Tensorboard with tf
-# TODO: learn how to use graphs in Tensorboard
+# TODO: tensorboard - update validation summary for epoch (seach in project "images_summary()")
+# TODO: understand Hinge loses (gan_hinge_loss() in ./inpaint_model.py)
+# TODO: understand Context Attention in ./inpaint_ops.py
 # TODO: understand how kernel_spectral_norm in neuralgym/ops/gan_ops.py
+# TODO: learn how to use graphs in Tensorboard
 # TODO: store best loss, best epoch per each epoch (mean of all batches, not only last batch)
 # TODO: add run.sh
 
