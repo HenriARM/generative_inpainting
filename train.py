@@ -38,11 +38,16 @@ def main():
     # training data
     FLAGS = ng.Config('inpaint.yml')
     img_shapes = FLAGS.img_shapes
-    fnames = glob.glob(args.dataset + '/*' + IMAGE_SUFFIX)
-    if len(fnames) == 0:
+    datapaths = glob.glob(args.dataset + '/*' + IMAGE_SUFFIX)
+    if len(datapaths) == 0:
         print('error')
         exit(-1)
-    fnames = utils.sort(fnames)
+
+    # shuffle data and split
+    random.shuffle(datapaths)
+    vlen = len(datapaths) * 2 // 3
+    fnames, val_fnames = datapaths[:vlen], datapaths[vlen:]
+
 
     # if FLAGS.guided:
     #     fnames = [(fname, fname[:-4] + '_edge.jpg') for fname in fnames]
@@ -56,9 +61,6 @@ def main():
     # validation images
 
     if FLAGS.val:
-        # shuffle data and split
-        # TODO
-        val_fnames = fnames.copy() # random.shuffle(fnames)
         # if FLAGS.guided:
         #     val_fnames = [
         #         (fname, fname[:-4] + '_edge.jpg') for fname in val_fnames]
@@ -111,25 +113,29 @@ def main():
     trainer.add_callbacks([
         discriminator_training_callback,
         ng.callbacks.WeightsViewer(),
-        ng.callbacks.ModelRestorer(trainer.context['saver'], dump_prefix=FLAGS.log_dir+'/snap', optimistic=True),
-        ng.callbacks.ModelSaver(FLAGS.train_spe, trainer.context['saver'], FLAGS.log_dir+'/snap'), 
+        ng.callbacks.ModelRestorer(trainer.context['saver'], dump_prefix=FLAGS.model_restore+'/snap', optimistic=True),
+        ng.callbacks.ModelSaver(FLAGS.train_spe, trainer.context['saver'], FLAGS.model_restore+'/snap'), 
         ng.callbacks.SummaryWriter((FLAGS.val_psteps), trainer.context['summary_writer'], tf.summary.merge_all()),
     ])
     # launch training
     trainer.train()
 
-# TODO: enable Tensorboard tensorboard --logdir /home/rudolfs/Desktop/generative_inpainting/training --port 6006
-# TODO: divide train data onto validation data
-
+# TODO: tensorboard check image summary for validation is updated
 # TODO: check all gpu and cpu / cpu_id gpu_id is used
-
-# TODO: Tensorboard add image results
 # TODO: send to random_crop center of image
-# TODO: SummaryWritter callback
 
-# TODO: store best loss, best epoch
+# TODO: understand Hing loses (gan_hinge_loss() in /home/rudolfs/Desktop/generative_inpainting/inpaint_model.py)
+# TODO: learn how to use Tensorboard with tf
+# TODO: learn how to use graphs in Tensorboard
+# TODO: understand how kernel_spectral_norm in neuralgym/ops/gan_ops.py
+# TODO: store best loss, best epoch per each epoch (mean of all batches, not only last batch)
 # TODO: add run.sh
 
 
 if __name__ == "__main__":
     main()
+
+# """
+# --logdir /home/rudolfs/Desktop/generative_inpainting/training --port 6006
+# ae_loss = L1 error of ground truth and coarse network + same of refine netwrok
+# """
