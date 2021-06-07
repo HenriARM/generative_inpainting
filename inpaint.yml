@@ -51,7 +51,7 @@ val_psteps: 1 # step per tensorboard visualisation (put less than spe)
 #     'data/imagenet/validation_static_view.flist',
 #   ]
 
-static_view_size: 3 # should be <= than validation dataset
+# static_view_size: 3 # should be <= than validation dataset
 img_shapes: [256, 256, 3]
 height: 128
 width: 128

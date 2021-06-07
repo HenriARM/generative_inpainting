@@ -45,8 +45,8 @@ def main():
 
     # shuffle data and split
     random.shuffle(datapaths)
-    vlen = len(datapaths) * 2 // 3
-    fnames, val_fnames = datapaths[:vlen], datapaths[vlen:]
+    vlen = len(datapaths) // 3
+    fnames, val_fnames = datapaths[:-vlen], datapaths[-vlen:]
 
     data = ng.data.DataFromFNames(
         fnames, img_shapes, random=True, random_crop=FLAGS.random_crop, nthreads=FLAGS.num_cpus_per_job)
@@ -57,8 +57,8 @@ def main():
 
     # validation images
     if FLAGS.val:
-        for i in range(FLAGS.static_view_size):
-            static_fnames = val_fnames[i:i+1]
+        for i in range(vlen):
+            static_fnames = [val_fnames[i]]
             static_images = ng.data.DataFromFNames(
                 static_fnames, img_shapes, nthreads=1,
                 random=True, random_crop=FLAGS.random_crop).data_pipeline(1)
@@ -113,8 +113,6 @@ def main():
     trainer.train()
 
 # TODO: tensorboard - batch incomplete is not inpainted, recheck
-# TODO: send to random_crop center of image
-
 # TODO: tensorboard - update validation summary for epoch (seach in project "images_summary()")
 # TODO: understand Hinge loses (gan_hinge_loss() in ./inpaint_model.py)
 # TODO: understand Context Attention in ./inpaint_ops.py
