@@ -11,7 +11,7 @@ import argparse
 import random
 
 
-IMAGE_SUFFIX = '_hdrnet.jpg'
+IMAGE_SUFFIX = '.png'
 
 
 def multigpu_graph_def(model, FLAGS, data, gpu_id=0, loss_type='g'):
@@ -45,11 +45,11 @@ def main():
 
     # shuffle data and split
     random.shuffle(datapaths)
-    vlen = len(datapaths) // 3
+    vlen = 1 #len(datapaths) // 3
     fnames, val_fnames = datapaths[:-vlen], datapaths[-vlen:]
 
     data = ng.data.DataFromFNames(
-        fnames, img_shapes, random=True, random_crop=FLAGS.random_crop, nthreads=FLAGS.num_cpus_per_job)
+        fnames, img_shapes, enqueue_size=FLAGS.batch_size, random=True, random_crop=FLAGS.random_crop, nthreads=FLAGS.num_cpus_per_job)
     images = data.data_pipeline(FLAGS.batch_size)
     # main model
     model = InpaintCAModel()
@@ -60,7 +60,7 @@ def main():
         for i in range(vlen):
             static_fnames = [val_fnames[i]]
             static_images = ng.data.DataFromFNames(
-                static_fnames, img_shapes, nthreads=1,
+                static_fnames, img_shapes, nthreads=1, enqueue_size=FLAGS.batch_size,
                 random=True, random_crop=FLAGS.random_crop).data_pipeline(1)
             static_inpainted_images = model.build_static_infer_graph(
                 FLAGS, static_images, name='static_view/%d' % i)
@@ -121,6 +121,7 @@ def main():
 # TODO: store best loss, best epoch per each epoch (mean of all batches, not only last batch)
 # TODO: add run.sh
 
+# process mem size depends on batch_size and img_shapes - (batch 1 shape 256 - 16%, 550% ?%CPU, SHR, RES, VIRT)
 
 if __name__ == "__main__":
     main()
