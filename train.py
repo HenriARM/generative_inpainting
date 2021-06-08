@@ -11,7 +11,7 @@ import argparse
 import random
 
 
-IMAGE_SUFFIX = '.png'
+IMAGE_SUFFIX = '.jpg'
 
 
 def multigpu_graph_def(model, FLAGS, data, gpu_id=0, loss_type='g'):
@@ -34,7 +34,7 @@ def multigpu_graph_def(model, FLAGS, data, gpu_id=0, loss_type='g'):
 def main():
     parser = argparse.ArgumentParser()
     args = parser.parse_args()
-    args.dataset = '/home/rudolfs/Desktop/reports/report-test'
+    args.dataset = '/home/rudolfs/Desktop/trainings/training-pan-03-06-2021'
     # training data
     FLAGS = ng.Config('inpaint.yml')
     img_shapes = FLAGS.img_shapes
@@ -124,9 +124,18 @@ def main():
 # process mem size depends on batch_size and img_shapes - (batch 1 shape 256 - 16%, 550% ?%CPU, SHR, RES, VIRT)
 
 if __name__ == "__main__":
-    main()
+    if tf.test.is_gpu_available():
+        with tf.device('/gpu:0'):
+            main()
+    else:
+        main()
 
-# """
-# --logdir /home/rudolfs/Desktop/generative_inpainting/training --port 6006
-# ae_loss = L1 error of ground truth and coarse network + same of refine netwrok
-# """
+"""
+--logdir /home/rudolfs/Desktop/generative_inpainting/training --port 6006
+ae_loss = L1 error of ground truth and coarse network + same of refine netwrok
+"""
+
+"""
+Changes made to neuralgym:
+TODO: added crop from center of pano 
+"""
