@@ -49,7 +49,7 @@ def main():
     fnames, val_fnames = datapaths[:-vlen], datapaths[-vlen:]
 
     data = ng.data.DataFromFNames(
-        fnames, img_shapes, enqueue_size=FLAGS.batch_size, random=True, random_crop=FLAGS.random_crop, nthreads=FLAGS.num_cpus_per_job)
+        fnames, img_shapes, queue_size=FLAGS.batch_size, enqueue_size=FLAGS.batch_size, random=True, random_crop=FLAGS.random_crop, nthreads=FLAGS.num_cpus_per_job)
     images = data.data_pipeline(FLAGS.batch_size)
     # main model
     model = InpaintCAModel()
@@ -60,7 +60,7 @@ def main():
         for i in range(vlen):
             static_fnames = [val_fnames[i]]
             static_images = ng.data.DataFromFNames(
-                static_fnames, img_shapes, nthreads=1, enqueue_size=FLAGS.batch_size,
+                static_fnames, img_shapes, nthreads=1, queue_size=FLAGS.batch_size, enqueue_size=FLAGS.batch_size,
                 random=True, random_crop=FLAGS.random_crop).data_pipeline(1)
             static_inpainted_images = model.build_static_infer_graph(
                 FLAGS, static_images, name='static_view/%d' % i)
@@ -74,7 +74,7 @@ def main():
     g_optimizer = d_optimizer
 
     # train discriminator with secondary trainer, should initialize before primary trainer.
-    discriminator_training_callback = ng.callbacks.SecondaryMultiGPUTrainer(
+    discriminator_training_callback = ng.callbacks.SecondaryTrainer(
         num_gpus=FLAGS.num_gpus_per_job,
         pstep=1,
         optimizer=d_optimizer,
@@ -87,7 +87,7 @@ def main():
     )
 
     # train generator with primary trainer
-    trainer = ng.train.MultiGPUTrainer(
+    trainer = ng.train.Trainer(
         num_gpus=FLAGS.num_gpus_per_job,
         optimizer=g_optimizer,
         var_list=g_vars,
@@ -130,6 +130,32 @@ if __name__ == "__main__":
     else:
         main()
 
+   
+"""
+    parser = argparse.ArgumentParser()
+    args = parser.parse_args()
+    args.dataset = '/home/rudolfs/Desktop/trainings/training-pan-03-06-2021'
+    # training data
+    FLAGS = ng.Config('inpaint.yml')
+    img_shapes = FLAGS.img_shapes
+    datapaths = glob.glob(args.dataset + '/*' + IMAGE_SUFFIX)
+    if len(datapaths) == 0:
+        print('error')
+        exit(-1)
+
+    # shuffle data and split
+    random.shuffle(datapaths)
+    vlen = 1 #len(datapaths) // 3
+    fnames, val_fnames = datapaths[:-vlen], datapaths[-vlen:]
+
+    data = ng.data.DataFromFNames(
+    fnames, img_shapes, enqueue_size=FLAGS.batch_size, random=True, random_crop=FLAGS.random_crop, nthreads=FLAGS.num_cpus_per_job)
+    images = data.data_pipeline(FLAGS.batch_size)
+
+    for i in range(100):
+        len(tuple(data.next_batch()))
+        pass
+"""
 """
 --logdir /home/rudolfs/Desktop/generative_inpainting/training --port 6006
 ae_loss = L1 error of ground truth and coarse network + same of refine netwrok
@@ -138,4 +164,11 @@ ae_loss = L1 error of ground truth and coarse network + same of refine netwrok
 """
 Changes made to neuralgym:
 TODO: added crop from center of pano 
+Memory problems:
+init_primary_trainer() in trainer.py
+# TODO: 3 threads are in next_batch() and 2 batches are created in parallel
+# TODO: add thread block when reading file and croping -> and releasing memory
+# TODO: rewrite reading and croping image
+# TODO: write separate script which reads panos and then check MEM size, is it released
+from github issues, approx 0.5 sec for 1 batch default
 """

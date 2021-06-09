@@ -178,7 +178,7 @@ class DataFromFNames(Dataset):
                     img, error = self.read_img(filenames[i])
                     if self.random_crop:
                         img, random_h, random_w = np_random_crop(
-                            img, tuple(self.shapes[i][:-1]),
+                            img.copy(), tuple(self.shapes[i][:-1]),
                             random_h, random_w, align=False)  # use last rand
                     else:
                         img = cv2.resize(img, tuple(self.shapes[i][:-1][::-1]))
