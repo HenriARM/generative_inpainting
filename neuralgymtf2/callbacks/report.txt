@@ -1,0 +1,19 @@
+TensorFlow 2.0 Upgrade Script
+-----------------------------
+Converted 1 files
+Detected 0 issues that require attention
+--------------------------------------------------------------------------------
+================================================================================
+Detailed log follows:
+
+================================================================================
+--------------------------------------------------------------------------------
+Processing file 'weights_viewer.py'
+ outputting to 'weights_viewer.py'
+--------------------------------------------------------------------------------
+
+33:19: INFO: Renamed 'tf.trainable_variables' to 'tf.compat.v1.trainable_variables'
+44:16: INFO: tf.summary.histogram requires manual check. The TF 1.x summary API cannot be automatically migrated to TF 2.0, so symbols have been converted to tf.compat.v1.summary.* and must be migrated manually. Typical usage will only require changes to the summary writing logic, not to individual calls like scalar(). For examples of the new summary API, see the Effective TF 2.0 migration document or check the TF 2.0 TensorBoard tutorials.
+44:16: INFO: Renamed 'tf.summary.histogram' to 'tf.compat.v1.summary.histogram'
+--------------------------------------------------------------------------------
+

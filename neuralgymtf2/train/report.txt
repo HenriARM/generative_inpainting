@@ -1,0 +1,36 @@
+TensorFlow 2.0 Upgrade Script
+-----------------------------
+Converted 1 files
+Detected 1 issues that require attention
+--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+File: trainer.py
+--------------------------------------------------------------------------------
+trainer.py:77:27: WARNING: tf.get_variable requires manual check. tf.get_variable returns ResourceVariables by default in 2.0, which have well-defined semantics and are stricter about shapes. You can disable this behavior by passing use_resource=False, or by calling tf.compat.v1.disable_resource_variables().
+================================================================================
+Detailed log follows:
+
+================================================================================
+--------------------------------------------------------------------------------
+Processing file 'trainer.py'
+ outputting to 'trainer.py'
+--------------------------------------------------------------------------------
+
+77:27: WARNING: tf.get_variable requires manual check. tf.get_variable returns ResourceVariables by default in 2.0, which have well-defined semantics and are stricter about shapes. You can disable this behavior by passing use_resource=False, or by calling tf.compat.v1.disable_resource_variables().
+77:27: INFO: Renamed 'tf.get_variable' to 'tf.compat.v1.get_variable'
+79:28: INFO: tf.zeros_initializer requires manual check. Initializers no longer have the dtype argument in the constructor or partition_info argument in the __call__ method.
+The calls have been converted to compat.v1 for safety (even though they may already have been correct).
+79:28: INFO: Renamed 'tf.zeros_initializer' to 'tf.compat.v1.zeros_initializer'
+80:46: INFO: Renamed 'tf.assign_add' to 'tf.compat.v1.assign_add'
+83:27: INFO: Renamed 'tf.ConfigProto' to 'tf.compat.v1.ConfigProto'
+88:31: INFO: Renamed 'tf.Session' to 'tf.compat.v1.Session'
+89:41: INFO: tf.summary.FileWriter requires manual check. The TF 1.x summary API cannot be automatically migrated to TF 2.0, so symbols have been converted to tf.compat.v1.summary.* and must be migrated manually. Typical usage will only require changes to the summary writing logic, not to individual calls like scalar(). For examples of the new summary API, see the Effective TF 2.0 migration document or check the TF 2.0 TensorBoard tutorials.
+89:41: INFO: Renamed 'tf.summary.FileWriter' to 'tf.compat.v1.summary.FileWriter'
+91:32: INFO: Renamed 'tf.train.Saver' to 'tf.compat.v1.train.Saver'
+91:47: INFO: Renamed 'tf.global_variables' to 'tf.compat.v1.global_variables'
+96:12: INFO: Renamed 'tf.train.start_queue_runners' to 'tf.compat.v1.train.start_queue_runners'
+101:37: INFO: Renamed 'tf.global_variables_initializer' to 'tf.compat.v1.global_variables_initializer'
+254:20: INFO: tf.summary.histogram requires manual check. The TF 1.x summary API cannot be automatically migrated to TF 2.0, so symbols have been converted to tf.compat.v1.summary.* and must be migrated manually. Typical usage will only require changes to the summary writing logic, not to individual calls like scalar(). For examples of the new summary API, see the Effective TF 2.0 migration document or check the TF 2.0 TensorBoard tutorials.
+254:20: INFO: Renamed 'tf.summary.histogram' to 'tf.compat.v1.summary.histogram'
+--------------------------------------------------------------------------------
+
