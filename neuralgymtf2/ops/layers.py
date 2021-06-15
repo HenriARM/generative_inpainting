@@ -494,4 +494,4 @@ def flatten(x, name='flatten'):
 
     """
     with tf.compat.v1.variable_scope(name):
-        return tf.contrib.layers.flatten(x)
+        return tf.reshape(x, [x.shape[0], -1])

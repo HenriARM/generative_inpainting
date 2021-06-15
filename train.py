@@ -3,8 +3,9 @@ import glob
 
 import tensorflow as tf
 tf.get_logger().setLevel('ERROR')
-import neuralgym as ng
+tf.compat.v1.disable_eager_execution()
 
+import neuralgymtf2 as ng
 from inpaint_model import InpaintCAModel
 import utils
 import argparse
@@ -45,11 +46,12 @@ def main():
 
     # shuffle data and split
     random.shuffle(datapaths)
-    vlen = 1 #len(datapaths) // 3
+    vlen = len(datapaths) // 4
     fnames, val_fnames = datapaths[:-vlen], datapaths[-vlen:]
 
     data = ng.data.DataFromFNames(
         fnames, img_shapes, queue_size=FLAGS.batch_size, enqueue_size=FLAGS.batch_size, random=True, random_crop=FLAGS.random_crop, nthreads=FLAGS.num_cpus_per_job)
+
     images = data.data_pipeline(FLAGS.batch_size)
     # main model
     model = InpaintCAModel()
@@ -67,10 +69,10 @@ def main():
 
 
     # training settings
-    lr = tf.get_variable(
+    lr = tf.compat.v1.get_variable(
         'lr', shape=[], trainable=False,
-        initializer=tf.constant_initializer(1e-4))
-    d_optimizer = tf.train.AdamOptimizer(lr, beta1=0.5, beta2=0.999)
+        initializer=tf.compat.v1.constant_initializer(1e-4))
+    d_optimizer = tf.compat.v1.train.AdamOptimizer(lr, beta1=0.5, beta2=0.999)
     g_optimizer = d_optimizer
 
     # train discriminator with secondary trainer, should initialize before primary trainer.
@@ -107,7 +109,7 @@ def main():
         ng.callbacks.WeightsViewer(),
         ng.callbacks.ModelRestorer(trainer.context['saver'], dump_prefix=FLAGS.model_restore+'/snap', optimistic=True),
         ng.callbacks.ModelSaver(FLAGS.train_spe, trainer.context['saver'], FLAGS.model_restore+'/snap'), 
-        ng.callbacks.SummaryWriter((FLAGS.val_psteps), trainer.context['summary_writer'], tf.summary.merge_all()),
+        ng.callbacks.SummaryWriter((FLAGS.val_psteps), trainer.context['summary_writer'], tf.compat.v1.summary.merge_all()),
     ])
     # launch training
     trainer.train()
@@ -130,32 +132,6 @@ if __name__ == "__main__":
     else:
         main()
 
-   
-"""
-    parser = argparse.ArgumentParser()
-    args = parser.parse_args()
-    args.dataset = '/home/rudolfs/Desktop/trainings/training-pan-03-06-2021'
-    # training data
-    FLAGS = ng.Config('inpaint.yml')
-    img_shapes = FLAGS.img_shapes
-    datapaths = glob.glob(args.dataset + '/*' + IMAGE_SUFFIX)
-    if len(datapaths) == 0:
-        print('error')
-        exit(-1)
-
-    # shuffle data and split
-    random.shuffle(datapaths)
-    vlen = 1 #len(datapaths) // 3
-    fnames, val_fnames = datapaths[:-vlen], datapaths[-vlen:]
-
-    data = ng.data.DataFromFNames(
-    fnames, img_shapes, enqueue_size=FLAGS.batch_size, random=True, random_crop=FLAGS.random_crop, nthreads=FLAGS.num_cpus_per_job)
-    images = data.data_pipeline(FLAGS.batch_size)
-
-    for i in range(100):
-        len(tuple(data.next_batch()))
-        pass
-"""
 """
 --logdir /home/rudolfs/Desktop/generative_inpainting/training --port 6006
 ae_loss = L1 error of ground truth and coarse network + same of refine netwrok

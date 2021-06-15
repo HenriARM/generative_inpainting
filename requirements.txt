@@ -1,6 +1,6 @@
 neuralgym  # pip install git+https://github.com/JiahuiYu/neuralgym
 cv2 # opencv-python
-# tensorflow==1.15
+# tensorflow==1.15 (2.2.0)
 # pyyaml
 # Pillow
 # python mandatory 3.6, to install conda tensorflow-gpu
