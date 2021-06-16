@@ -7,6 +7,8 @@ cv2 # opencv-python
 # conda create --name=deepfill_off python=3.6
 # conda env remove -n ENV_NAME
 # conda install tensorflow-gpu==1.9.0
+# conda install tensorflow-gpu==2.2.0
+# $ conda search tensorflow
 
 # python test.py --image ./examples/case1_input.png --mask ./examples/case1_mask.png --output ./examples/case1_output.png --checkpoint ./model_logs
 

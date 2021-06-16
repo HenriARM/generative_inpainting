@@ -68,8 +68,8 @@ def scalar_summary(name, value, sess=None, summary_writer=None, step=None):
             sess = get_sess(sess)
             sess.run(tf.compat.v1.initialize_variables([value]))
         # new summary tensor
-        with tf.device('/cpu:0'):
-            summary = tf.compat.v1.summary.scalar(name, value)
+        # with tf.device('/cpu:0'):
+        summary = tf.compat.v1.summary.scalar(name, value)
     # write to summary
     if summary_writer is not None:
         assert step is not None, 'step be None when write to summary.'
@@ -91,7 +91,7 @@ def filters_summary(kernel, rescale=True, name='kernel'):
     assert len(shape) == 4
     # input channels must be 1 or 3
     assert shape[-2] in [1, 3]
-    with tf.compat.v1.variable_scope('filters_visualization'), tf.device('/cpu:0'):
+    with tf.compat.v1.variable_scope('filters_visualization'): #, tf.device('/cpu:0'):
         if rescale:
             # scale weights to [0 1], type is still float
             x_min = tf.reduce_min(input_tensor=kernel)
@@ -116,7 +116,7 @@ def images_summary(images, name, max_outs, color_format='BGR'):
     :param color_format: 'BGR', 'RGB' or 'GREY'
     :return: None
     """
-    with tf.compat.v1.variable_scope(name), tf.device('/cpu:0'):
+    with tf.compat.v1.variable_scope(name): #, tf.device('/cpu:0'):
         if color_format == 'BGR':
             img = tf.clip_by_value(
                 (tf.reverse(images, [-1])+1.)*127.5, 0., 255.)

@@ -16,8 +16,8 @@ IMAGE_SUFFIX = '.jpg'
 
 
 def multigpu_graph_def(model, FLAGS, data, gpu_id=0, loss_type='g'):
-    with tf.device('/cpu:0'):
-        images = data.data_pipeline(FLAGS.batch_size)
+    #with tf.device('/cpu:0'):
+    images = data.data_pipeline(FLAGS.batch_size)
     if gpu_id == 0 and loss_type == 'g':
         _, _, losses = model.build_graph_with_losses(
             FLAGS, images, FLAGS, summary=True, reuse=True)
@@ -113,8 +113,10 @@ def main():
     ])
     # launch training
     trainer.train()
+# TODO: rewrite QueueRunner to tf2 Custom Dataset
+# TODO: train on server from local files, not /mnt
+# TODO: try uncomment with.tf.device CPU
 
-# TODO: tensorboard - batch incomplete is not inpainted, recheck
 # TODO: tensorboard - update validation summary for epoch (seach in project "images_summary()")
 # TODO: understand Hinge loses (gan_hinge_loss() in ./inpaint_model.py)
 # TODO: understand Context Attention in ./inpaint_ops.py
@@ -126,11 +128,13 @@ def main():
 # process mem size depends on batch_size and img_shapes - (batch 1 shape 256 - 16%, 550% ?%CPU, SHR, RES, VIRT)
 
 if __name__ == "__main__":
-    if tf.test.is_gpu_available():
-        with tf.device('/gpu:0'):
-            main()
-    else:
+    with tf.device('/gpu:0'):
         main()
+    # if tf.test.is_gpu_available():
+    #     with tf.device('/gpu:0'):
+    #         main()
+    # else:
+    #     main()
 
 """
 --logdir /home/rudolfs/Desktop/generative_inpainting/training --port 6006
