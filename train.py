@@ -12,12 +12,16 @@ import argparse
 import random
 
 
+FLAGS = ng.Config('inpaint.yml')
+ARTIFACT_CENTERED = True
+RANDOM_CROP = True
+IMAGE_SHAPE = FLAGS.img_shape
+DATASET_PATH = FLAGS.dataset_path
 IMAGE_SUFFIX = '.jpg'
 
 
 def multigpu_graph_def(model, FLAGS, data, gpu_id=0, loss_type='g'):
     #with tf.device('/cpu:0'):
-    images = data.data_pipeline(FLAGS.batch_size)
     if gpu_id == 0 and loss_type == 'g':
         _, _, losses = model.build_graph_with_losses(
             FLAGS, images, FLAGS, summary=True, reuse=True)
@@ -33,40 +37,23 @@ def multigpu_graph_def(model, FLAGS, data, gpu_id=0, loss_type='g'):
 
 
 def main():
-    parser = argparse.ArgumentParser()
-    args = parser.parse_args()
-    args.dataset = '/home/rudolfs/Desktop/trainings/training-pan-03-06-2021'
-    # training data
-    FLAGS = ng.Config('inpaint.yml')
-    img_shapes = FLAGS.img_shapes
-    datapaths = glob.glob(args.dataset + '/*' + IMAGE_SUFFIX)
-    if len(datapaths) == 0:
+    file_paths = glob.glob(FLAGS.dataset_path + '/*' + IMAGE_SUFFIX)
+    if len(file_paths) == 0:
         print('error')
         exit(-1)
 
-    # shuffle data and split
-    random.shuffle(datapaths)
-    vlen = len(datapaths) // 4
-    fnames, val_fnames = datapaths[:-vlen], datapaths[-vlen:]
+    # split data
+    random.shuffle(file_paths)
+    val_len = 1 #int(len(file_paths)* 0.2)
+    train_paths, val_paths = file_paths[:-val_len], file_paths[-val_len:]
 
     data = ng.data.DataFromFNames(
-        fnames, img_shapes, queue_size=FLAGS.batch_size, enqueue_size=FLAGS.batch_size, random=True, random_crop=FLAGS.random_crop, nthreads=FLAGS.num_cpus_per_job)
+        fnames, img_shape, queue_size=FLAGS.batch_size, enqueue_size=FLAGS.batch_size, random=True, random_crop=FLAGS.random_crop, nthreads=FLAGS.num_cpus_per_job)
 
     images = data.data_pipeline(FLAGS.batch_size)
     # main model
     model = InpaintCAModel()
     g_vars, d_vars, losses = model.build_graph_with_losses(FLAGS, images)
-
-    # validation images
-    if FLAGS.val:
-        for i in range(vlen):
-            static_fnames = [val_fnames[i]]
-            static_images = ng.data.DataFromFNames(
-                static_fnames, img_shapes, nthreads=1, queue_size=FLAGS.batch_size, enqueue_size=FLAGS.batch_size,
-                random=True, random_crop=FLAGS.random_crop).data_pipeline(1)
-            static_inpainted_images = model.build_static_infer_graph(
-                FLAGS, static_images, name='static_view/%d' % i)
-
 
     # training settings
     lr = tf.compat.v1.get_variable(
@@ -112,20 +99,8 @@ def main():
         ng.callbacks.SummaryWriter((FLAGS.val_psteps), trainer.context['summary_writer'], tf.compat.v1.summary.merge_all()),
     ])
     # launch training
-    trainer.train()
-# TODO: rewrite QueueRunner to tf2 Custom Dataset
-# TODO: train on server from local files, not /mnt
-# TODO: try uncomment with.tf.device CPU
+    trainer.train(x)
 
-# TODO: tensorboard - update validation summary for epoch (seach in project "images_summary()")
-# TODO: understand Hinge loses (gan_hinge_loss() in ./inpaint_model.py)
-# TODO: understand Context Attention in ./inpaint_ops.py
-# TODO: understand how kernel_spectral_norm in neuralgym/ops/gan_ops.py
-# TODO: learn how to use graphs in Tensorboard
-# TODO: store best loss, best epoch per each epoch (mean of all batches, not only last batch)
-# TODO: add run.sh
-
-# process mem size depends on batch_size and img_shapes - (batch 1 shape 256 - 16%, 550% ?%CPU, SHR, RES, VIRT)
 
 if __name__ == "__main__":
     with tf.device('/gpu:0'):
@@ -141,14 +116,59 @@ if __name__ == "__main__":
 ae_loss = L1 error of ground truth and coarse network + same of refine netwrok
 """
 
-"""
-Changes made to neuralgym:
-TODO: added crop from center of pano 
-Memory problems:
-init_primary_trainer() in trainer.py
-# TODO: 3 threads are in next_batch() and 2 batches are created in parallel
-# TODO: add thread block when reading file and croping -> and releasing memory
-# TODO: rewrite reading and croping image
-# TODO: write separate script which reads panos and then check MEM size, is it released
-from github issues, approx 0.5 sec for 1 batch default
-"""
+# Options for net:
+# Eager execution: tf.compat.v1.Layers + tf.compat.v1.Session()
+# Static execution: tf.function + SavedModel pb
+
+# # TensorFlow 1.X
+# outputs = session.run(f(placeholder), feed_dict={placeholder: input})
+# # TensorFlow 2.0
+# outputs = f(input)
+
+# TODO: when _run() of QueueRunner is called? how batch data is feeded to neural net? Trainer.py feed_dict=self.context['feed_dict']) is empty
+# TODO: find other deepfill tf impl + which run fast with no gpu bottleneck and memory leak + see if neuralgym is used
+# TODO: find all places where next_batch() is used (is it in trainer.py or not?)
+# TODO: dont even need QueueRunner - for building graph use batch_ph, 
+# TODO: ask Eduards how correctly should be visualised images in tensorboard?
+# TODO: take 100 static images and show each epoch how they are inpainted?
+# TODO: val_psteps == train_spe 
+# TODO: train on server from local files, not /mnt
+# TODO: tensorboard - update validation summary for epoch (seach in project "images_summary()")
+# TODO: understand Hinge loses (gan_hinge_loss() in ./inpaint_model.py)
+# TODO: understand Context Attention in ./inpaint_ops.py
+# TODO: understand how kernel_spectral_norm in neuralgym/ops/gan_ops.py
+# TODO: learn how to use graphs in Tensorboard
+# TODO: store best loss, best epoch per each epoch (mean of all batches, not only last batch)
+# TODO: add run.sh
+
+# static_images = ng.data.DataFromFNames().data_pipeline(1)
+# static_inpainted_images = model.build_static_infer_graph(FLAGS, images, name='static_view/%d' % i)
+
+'''
+train_dataset = ng.data.data_from_fnames.create_dataset(file_paths=train_paths,batch_size=FLAGS.batch_size)
+dataset_iter = tf.compat.v1.data.make_one_shot_iterator(train_dataset)
+x = dataset_iter.get_next()
+
+batch_phs = tf.compat.v1.placeholder(tf.float32, [FLAGS.batch_size] + FLAGS.img_shape)
+model = InpaintCAModel()
+g_vars, d_vars, losses = model.build_graph_with_losses(FLAGS, batch_phs)
+
+sess = tf.compat.v1.Session()
+one = np.ones(shape=(16,256,256,3), dtype=np.float32)
+res = sess.run(batch_phs, feed_dict={batch_phs: one})
+for op in sess.graph.get_operations():
+    print(str(op.name))
+
+Results of dequeueing:
+Placeholder
+FIFOQueueV2
+FIFOQueueV2_EnqueueMany
+FIFOQueueV2_Close
+FIFOQueueV2_Close_1
+FIFOQueueV2_DequeueMany/n
+FIFOQueueV2_DequeueMany
+'''
+
+# 1. change to Wand (tf.print) set tf log = true, to show cpu
+# 2. if mem/time problem is with croping - make daudz cropus un uztrenet modeli
+# 3. play with hardcoding of tf.device('/cpu:0') in preprocessing 
