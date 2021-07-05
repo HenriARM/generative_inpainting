@@ -1,19 +1,23 @@
-// {
-//     "configurations": [
-//         {
-//             "name": "Python: Current File",
-//             "type": "python",
-//             "request": "launch",
-//             "program": "${file}",
-//             "console": "integratedTerminal",
-//             "justMyCode": false
-//         }
-//     ]
-// }
-// {
-//     "configurations": [
-//         {
-//         }
-//     ]
-// }
-// "justMyCode": true
+{
+    "configurations": [
+      {
+        "name": "Python: Current File (Integrated Terminal)",
+        "type": "python",
+        "request": "launch",
+        "program": "${file}",
+        "console": "integratedTerminal",
+        "python": "${config:python.pythonPath}",
+        // compile without creating __py_cache__
+        "pythonArgs": ["-B"]
+      },
+      {
+        "name": "Python: Current File (External Terminal)",
+        "type": "python",
+        "request": "launch",
+        "program": "${file}",
+        "console": "externalTerminal",
+        "python": "${config:python.pythonPath}",
+        "pythonArgs": ["-B"]
+      }
+    ]
+  }

@@ -1,3 +1,14 @@
-model_logs
-logs
 .idea/
+
+# https://github.com/github/gitignore/blob/master/Python.gitignore
+# Byte-compiled / optimized / DLL files
+# __pycache__/
+# *.py[cod]
+
+# Custom usage
+# pretrained model
+placesv2-512/
+# saved model in tf2
+modeltf2/
+# training model and logs
+training/
