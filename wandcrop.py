@@ -38,6 +38,5 @@ def main():
     t_stop = process_time()
     print_res(img, crop, 'ImageMagick', t_start, t_stop)
 
-
 if __name__ == "__main__":
     main()
