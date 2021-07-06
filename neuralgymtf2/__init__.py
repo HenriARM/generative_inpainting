@@ -29,7 +29,6 @@ from . import ops
 from . import train
 from . import models
 from . import data
-from . import server
 
 from .utils.gpus import set_gpus, get_gpus
 from .utils.tf_utils import get_sess
