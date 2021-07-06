@@ -20,7 +20,7 @@ DATASET_PATH = FLAGS.dataset_path
 IMAGE_SUFFIX = '.jpg'
 
 
-def multigpu_graph_def(model, FLAGS, data, gpu_id=0, loss_type='g'):
+def multigpu_graph_def(model, FLAGS, images, gpu_id=0, loss_type='g'):
     #with tf.device('/cpu:0'):
     if gpu_id == 0 and loss_type == 'g':
         _, _, losses = model.build_graph_with_losses(
@@ -44,12 +44,12 @@ def main():
 
     # split data
     random.shuffle(file_paths)
-    val_len = 1 #int(len(file_paths)* 0.2)
+    val_len = len(file_paths) - 100 #1 #int(len(file_paths)* 0.2)
     train_paths, val_paths = file_paths[:-val_len], file_paths[-val_len:]
 
     data = ng.data.DataFromFNames(
-        fnames, img_shape, queue_size=FLAGS.batch_size, enqueue_size=FLAGS.batch_size, random=True, random_crop=FLAGS.random_crop, nthreads=FLAGS.num_cpus_per_job)
-
+        train_paths, FLAGS.img_shape, queue_size=FLAGS.batch_size, enqueue_size=FLAGS.batch_size, random=True, random_crop=FLAGS.random_crop, nthreads=FLAGS.num_cpus_per_job)
+ 
     images = data.data_pipeline(FLAGS.batch_size)
     # main model
     model = InpaintCAModel()
@@ -72,7 +72,7 @@ def main():
         grads_summary=False,
         graph_def=multigpu_graph_def,
         graph_def_kwargs={
-            'model': model, 'FLAGS': FLAGS, 'data': data, 'loss_type': 'd'},
+            'model': model, 'FLAGS': FLAGS, 'images': images, 'loss_type': 'd'},
     )
 
     # train generator with primary trainer
@@ -85,7 +85,7 @@ def main():
         grads_summary=False,
         gradient_processor=None,
         graph_def_kwargs={
-            'model': model, 'FLAGS': FLAGS, 'data': data, 'loss_type': 'g'},
+            'model': model, 'FLAGS': FLAGS, 'images': images, 'loss_type': 'g'},
         spe=FLAGS.train_spe,
         log_dir=FLAGS.log_dir,
     )
@@ -99,7 +99,7 @@ def main():
         ng.callbacks.SummaryWriter((FLAGS.val_psteps), trainer.context['summary_writer'], tf.compat.v1.summary.merge_all()),
     ])
     # launch training
-    trainer.train(x)
+    trainer.train()
 
 
 if __name__ == "__main__":
@@ -125,7 +125,14 @@ ae_loss = L1 error of ground truth and coarse network + same of refine netwrok
 # # TensorFlow 2.0
 # outputs = f(input)
 
-# TODO: when _run() of QueueRunner is called? how batch data is feeded to neural net? Trainer.py feed_dict=self.context['feed_dict']) is empty
+# Read Fully QueueRunning and how threading is done
+# 1. set tf log = true, to show cpu
+# 0. how many threads we create? (besides for preprocessing)
+# 2. if mem/time problem is with croping - make daudz cropus un uztrenet modeli
+# 3. play with hardcoding of tf.device('/cpu:0') in preprocessing 
+
+# TODO: terminate called without an active exception (probably problem with threads, not detaching or joining)
+# TODO: put breakpoint on next_batch(), there is separate thread for running _run of QueueRunner. Trainer.py feed_dict=self.context['feed_dict']) is empty
 # TODO: find other deepfill tf impl + which run fast with no gpu bottleneck and memory leak + see if neuralgym is used
 # TODO: find all places where next_batch() is used (is it in trainer.py or not?)
 # TODO: dont even need QueueRunner - for building graph use batch_ph, 
@@ -169,6 +176,19 @@ FIFOQueueV2_DequeueMany/n
 FIFOQueueV2_DequeueMany
 '''
 
-# 1. change to Wand (tf.print) set tf log = true, to show cpu
-# 2. if mem/time problem is with croping - make daudz cropus un uztrenet modeli
-# 3. play with hardcoding of tf.device('/cpu:0') in preprocessing 
+'''
+Results:
+-------
+4 threads, 8 batch size
+Wand - 30 and exited, 25% mem with increasing to 700% CPU
+OpenCV - 4 and exited, 70% mem used and 600% CPU
+PIL - 35 and exited, 70% mem and till 700% CPU
+-------
+1 threads, 8 batch size
+Wand - 35 and exited, 30% mem and till 700% CPU
+OpenCV - 35 and exited, 40% mem and till 700% CPU
+PIL - 35 and exited, 30% mem and till 700% CPU
+-------
+Conclusion: num_threads will imply on amount of FIFO pipelines 
+=> only mem % will increase with increasing num of threads
+'''
