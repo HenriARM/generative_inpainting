@@ -131,6 +131,11 @@ ae_loss = L1 error of ground truth and coarse network + same of refine netwrok
 # 2. if mem/time problem is with croping - make daudz cropus un uztrenet modeli
 # 3. play with hardcoding of tf.device('/cpu:0') in preprocessing 
 
+
+# TODO: maybe PIL and Wand will crop raw images (bmp, .tiff) without opening it? 
+# find way how to use memory profiler inside of crop functions, maybe they read it whole in RAM
+
+
 # TODO: terminate called without an active exception (probably problem with threads, not detaching or joining)
 # TODO: put breakpoint on next_batch(), there is separate thread for running _run of QueueRunner. Trainer.py feed_dict=self.context['feed_dict']) is empty
 # TODO: find other deepfill tf impl + which run fast with no gpu bottleneck and memory leak + see if neuralgym is used
