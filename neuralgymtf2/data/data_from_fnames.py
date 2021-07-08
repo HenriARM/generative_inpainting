@@ -14,33 +14,33 @@ from ..ops.image_ops import np_random_crop
 from ..utils.config import Config
 from tensorflow.python.ops import data_flow_ops
 # TODO: tmp
-FLAGS = Config('/home/rudolfs/Desktop/generative_inpainting/inpaint.yml')
+# FLAGS = Config('/home/rudolfs/Desktop/generative_inpainting/inpaint.yml')
 
-def parse_image(filename_tensor):
-    # path is store as tensor of bytes
-    filename = filename_tensor.numpy().decode("utf-8")
-    image = cv2.imread(filename)
-    if FLAGS.centered is True:
-        image = image[int(0.4 * image.shape[0]):int(0.82 * image.shape[0])]
-    if FLAGS.random_crop is True:
-        image, _, _ = np_random_crop(image, tuple(FLAGS.img_shape[:-1]),
-        random_h=None, random_w=None, align=False) 
-    else:
-        image = cv2.resize(image, tuple(FLAGS.img_shape[:-1][::-1]))
-    # image = tf.convert_to_tensor(image, dtype=tf.uint8)
-    # image = image.set_shape((256, 256, 3))
-    return image
+# def parse_image(filename_tensor):
+#     # path is store as tensor of bytes
+#     filename = filename_tensor.numpy().decode("utf-8")
+#     image = cv2.imread(filename)
+#     if FLAGS.centered is True:
+#         image = image[int(0.4 * image.shape[0]):int(0.82 * image.shape[0])]
+#     if FLAGS.random_crop is True:
+#         image, _, _ = np_random_crop(image, tuple(FLAGS.img_shape[:-1]),
+#         random_h=None, random_w=None, align=False) 
+#     else:
+#         image = cv2.resize(image, tuple(FLAGS.img_shape[:-1][::-1]))
+#     # image = tf.convert_to_tensor(image, dtype=tf.uint8)
+#     # image = image.set_shape((256, 256, 3))
+#     return image
 
-def tf_parse_image(filename_tensor):
-  [image,] = tf.py_function(parse_image, [filename_tensor], [tf.uint8])
-  return image
+# def tf_parse_image(filename_tensor):
+#   [image,] = tf.py_function(parse_image, [filename_tensor], [tf.uint8])
+#   return image
 
-def create_dataset(file_paths, batch_size):
-    dataset = tf.data.Dataset.from_tensor_slices(file_paths)
-    dataset = dataset.map(tf_parse_image)
-    # can add num of epochs in repeat() - all_epochs / spe
-    dataset = dataset.repeat().batch(batch_size)
-    return dataset
+# def create_dataset(file_paths, batch_size):
+#     dataset = tf.data.Dataset.from_tensor_slices(file_paths)
+#     dataset = dataset.map(tf_parse_image)
+#     # can add num of epochs in repeat() - all_epochs / spe
+#     dataset = dataset.repeat().batch(batch_size)
+#     return dataset
 ##############################################################################
 READER_LOCK = threading.Lock()
 
