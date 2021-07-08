@@ -44,7 +44,7 @@ def main():
 
     # split data
     random.shuffle(file_paths)
-    val_len = len(file_paths) - 100 #1 #int(len(file_paths)* 0.2)
+    val_len = 1 #len(file_paths) - 100 #1 #int(len(file_paths)* 0.2)
     train_paths, val_paths = file_paths[:-val_len], file_paths[-val_len:]
 
     data = ng.data.DataFromFNames(
@@ -128,14 +128,11 @@ ae_loss = L1 error of ground truth and coarse network + same of refine netwrok
 # Read Fully QueueRunning and how threading is done
 # 1. set tf log = true, to show cpu
 # 0. how many threads we create? (besides for preprocessing)
-# 2. if mem/time problem is with croping - make daudz cropus un uztrenet modeli
 # 3. play with hardcoding of tf.device('/cpu:0') in preprocessing 
 
 
 # TODO: maybe PIL and Wand will crop raw images (bmp, .tiff) without opening it? 
 # find way how to use memory profiler inside of crop functions, maybe they read it whole in RAM
-
-
 # TODO: terminate called without an active exception (probably problem with threads, not detaching or joining)
 # TODO: put breakpoint on next_batch(), there is separate thread for running _run of QueueRunner. Trainer.py feed_dict=self.context['feed_dict']) is empty
 # TODO: find other deepfill tf impl + which run fast with no gpu bottleneck and memory leak + see if neuralgym is used
