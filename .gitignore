@@ -6,9 +6,7 @@ __pycache__/
 *.py[cod]
 
 # Custom usage
-# pretrained model
-placesv2-512/
-# saved model in tf2
-modeltf2/
+# Pretrained models
+models/
 # training model and logs
 training/
