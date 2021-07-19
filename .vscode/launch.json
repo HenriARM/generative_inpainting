@@ -6,7 +6,7 @@
         "request": "launch",
         "program": "${file}",
         "console": "integratedTerminal",
-        "python": "${config:python.pythonPath}",
+        "python": "${command:python.interpreterPath}",
         // compile without creating __py_cache__
         "pythonArgs": ["-B"]
       },
@@ -16,7 +16,7 @@
         "request": "launch",
         "program": "${file}",
         "console": "externalTerminal",
-        "python": "${config:python.pythonPath}",
+        "python": "${command:python.interpreterPath}",
         "pythonArgs": ["-B"]
       }
     ]
