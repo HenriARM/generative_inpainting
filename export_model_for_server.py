@@ -6,8 +6,8 @@ import shutil
 
 FLAGS = flags.FLAGS
 
-flags.DEFINE_string("model_path", None, "tensorflow frozen model")
-flags.DEFINE_string("output_dir", "None", "where to save the slutty reslut")
+flags.DEFINE_string("model_path", "/home/henri/projects/deepfill/models/mytrainpb/saved_model.pb", "tensorflow frozen model")
+flags.DEFINE_string("output_dir", "./tmp", "where to save the slutty reslut")
 flags.DEFINE_boolean("add_jpeg_input", False, "Add jpeg decode ops at the beginning of model graph, so that jpeg can be sent over API insted of float array")
 flags.DEFINE_boolean("add_extra_input_channel", False, "Add extra channel for for depth map or histogram projection")
 flags.DEFINE_string("signature_def_map", 'deeplab', "signature map of tensorflow serving model")
@@ -18,9 +18,16 @@ OUTPUT_TENSOR_NAME = 'heatmaps:0'
 
 def main(argv):
   os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
-  graph = tf.Graph()
+  # graph = tf.Graph()
 
-  graph_def = tf.compat.v1.GraphDef.FromString(open(FLAGS.model_path, "rb").read())
+  path = tf.keras.utils.get_file(
+    'inception_v1_2016_08_28_frozen.pb',
+    'http://storage.googleapis.com/download.tensorflow.org/models/inception_v1_2016_08_28_frozen.pb.tar.gz',
+    untar=True)
+
+  graph_def = tf.compat.v1.GraphDef()
+  loaded = graph_def.ParseFromString(open(FLAGS.model_path,'rb').read())
+
 
   if graph_def is None:
     raise RuntimeError('Model not found.')
