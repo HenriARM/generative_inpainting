@@ -14,7 +14,7 @@ CHECKPOINT_DIR = './placesv2-512'
 INPUT_SIZE = 256  # input image size for Generator 512
 IMAGE_SUFFIX = '_hdrnet.jpg'
 MASK_SUFFIX = '_inpainted_mask.png'
-INPAINT_SUFFIX = '_inpainted.png'
+INPAINT_SUFFIX = '_inpainted.jpg'
 LOCAL_CACHE= False
 
 MIN_BBOX_AREA = 50 * 50
