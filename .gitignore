@@ -8,5 +8,6 @@ __pycache__/
 # Custom usage
 # Pretrained models
 models/
-# training model and logs
+checkpoints/
+# training checkpoints and logs
 training/
