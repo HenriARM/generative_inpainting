@@ -4,13 +4,15 @@ import os
 import utils
 import glob
 import argparse
-import neuralgym as ng
+import neuralgymtf2 as ng
 import time
 
 import tensorflow as tf
 from inpaint_model import InpaintCAModel
 
-CHECKPOINT_DIR = './placesv2-512'
+tf.compat.v1.disable_eager_execution()
+
+CHECKPOINT_DIR = '/home/henri/projects/deepfill/models/mytrain'
 INPUT_SIZE = 256  # input image size for Generator 512
 IMAGE_SUFFIX = '_hdrnet.jpg'
 MASK_SUFFIX = '_inpainted_mask.png'
@@ -22,23 +24,23 @@ OVERLAP_DISTANCE = 200
 
 def model_compile():
     FLAGS = ng.Config('inpaint.yml')
-    sess_config = tf.ConfigProto()
+    sess_config = tf.compat.v1.ConfigProto()
     sess_config.gpu_options.allow_growth = True
-    sess = tf.Session(config=sess_config)
+    sess = tf.compat.v1.Session(config=sess_config)
 
     model = InpaintCAModel()
-    input_image_ph = tf.placeholder(tf.float32, shape=(1, INPUT_SIZE, INPUT_SIZE * 2, 3))
-    output = model.build_server_graph(FLAGS, input_image_ph, reuse=tf.AUTO_REUSE)
+    input_image_ph = tf.compat.v1.placeholder(tf.float32, shape=(1, INPUT_SIZE, INPUT_SIZE * 2, 3))
+    output = model.build_server_graph(FLAGS, input_image_ph, reuse=tf.compat.v1.AUTO_REUSE)
     output = (output + 1.) * 127.5
     output = tf.reverse(output, [-1])
     output = tf.saturate_cast(output, tf.uint8)
-    vars_list = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES)
+    vars_list = tf.compat.v1.get_collection(tf.compat.v1.GraphKeys.GLOBAL_VARIABLES)
     assign_ops = []
     for var in vars_list:
         vname = var.name
         from_name = vname
-        var_value = tf.contrib.framework.load_variable(CHECKPOINT_DIR, from_name)
-        assign_ops.append(tf.assign(var, var_value))
+        var_value = tf.train.load_variable(CHECKPOINT_DIR, from_name)
+        assign_ops.append(tf.compat.v1.assign(var, var_value))
     sess.run(assign_ops)
     print('Model loaded')
     return sess, input_image_ph, output    
@@ -62,8 +64,8 @@ def main():
     args = parser.parse_args()
 
     # args.dataset = '/mnt/machine_learning/datasets/hm_dataset/reports/report-13-05-2021/data'
-    args.dataset = '/home/rudolfs/Desktop/reports/report-13-05-2021/data'
-    args.output_dir = './output'  # output directory
+    args.dataset = '/home/henri/datasets/artifacts/panos/pan-21-07-2021/data'
+    args.output_dir = '/home/henri/datasets/artifacts/panos/pan-21-07-2021/mytrain'  # output directory
 
     paths_image, paths_mask = utils.read_paths(dataset_path=args.dataset, image_suffix=IMAGE_SUFFIX, mask_suffix=MASK_SUFFIX)
 
