@@ -1,3 +1,4 @@
+from base64 import b64decode
 import numpy as np
 from cv2 import cv2
 import os
@@ -11,7 +12,7 @@ from inpaint_model import InpaintCAModel
 
 tf.compat.v1.disable_eager_execution()
 
-CHECKPOINT_DIR = './placesv2-512'
+CHECKPOINT_DIR = '/home/henri/projects/deepfill/models/mytrain'
 INPUT_SIZE = 256  # input image size for Generator 512
 IMAGE_SUFFIX = '_hdrnet.jpg'
 MASK_SUFFIX = '_inpainted_mask.png'
@@ -19,6 +20,9 @@ INPAINT_SUFFIX = '_inpainted.jpg'
 
 MIN_BBOX_AREA = 50 * 50
 OVERLAP_DISTANCE = 200
+
+INPUT_TENSOR_NAME = 'encoded_input'
+OUTPUT_TENSOR_NAME = 'saturate_cast'
 
 # def inferencetf2(image, mask):
 #     # prepare input tensor
@@ -36,6 +40,59 @@ OVERLAP_DISTANCE = 200
 #         output_image = sess.run(output_tensor,feed_dict={input_tensor: input_image})
 #         output_image = output_image[0][:, :, ::-1]
 #         return output_image
+
+# TODO: rewrite to send only image file_path
+# TODO: rewrite for multiple images [for each image byte array -> decode to (1, 256, 512, 3)] 
+def export_model():
+    FLAGS = ng.Config('inpaint.yml')
+    sess_config = tf.compat.v1.ConfigProto()
+    sess_config.gpu_options.allow_growth = True
+    sess = tf.compat.v1.Session(config=sess_config)
+    graph = tf.compat.v1.get_default_graph()
+    # graph_def = graph.as_graph_def()
+      
+    jpeg_batch = tf.compat.v1.placeholder(dtype=tf.string, name=INPUT_TENSOR_NAME, shape=[1])
+    images_tensor = tf.map_fn(lambda image: tf.cast(tf.io.decode_image(image), tf.float32), jpeg_batch, dtype=tf.float32)
+    images_tensor.set_shape(shape=(1, INPUT_SIZE, INPUT_SIZE * 2, 3))
+    # image_tensor = tf.expand_dims(image_tensor, axis=0)
+    # input_image_ph = tf.compat.v1.placeholder(name='Placetest', dtype=tf.float32, shape=(INPUT_SIZE, INPUT_SIZE * 2, 3))
+
+    ############################# CODE DUPLICATE ################################
+    model = InpaintCAModel()
+    # input_image_ph = tf.compat.v1.placeholder(tf.float32, shape=(1, INPUT_SIZE, INPUT_SIZE * 2, 3))
+    output = model.build_server_graph(FLAGS, images_tensor, reuse=tf.compat.v1.AUTO_REUSE)
+    output = (output + 1.) * 127.5
+    output = tf.reverse(output, [-1])
+    output = tf.saturate_cast(output, tf.uint8)
+    vars_list = tf.compat.v1.get_collection(tf.compat.v1.GraphKeys.GLOBAL_VARIABLES)
+    assign_ops = []
+    for var in vars_list:
+        vname = var.name
+        from_name = vname
+        var_value = tf.train.load_variable(CHECKPOINT_DIR, from_name)
+        assign_ops.append(tf.compat.v1.assign(var, var_value))
+    sess.run(assign_ops)
+    ############################# CODE DUPLICATE ################################
+
+    tensor_info_input = tf.compat.v1.saved_model.build_tensor_info(graph.get_tensor_by_name(f'{INPUT_TENSOR_NAME}:0'))
+    tensor_info_output = tf.compat.v1.saved_model.build_tensor_info(graph.get_tensor_by_name(f'{OUTPUT_TENSOR_NAME}:0')) #map/TensorArrayV2Stack/TensorListStack:0      
+    inputs = {'images': tensor_info_input}
+    outputs = {'class_heatmaps': tensor_info_output}
+    prediction_signature = (
+        tf.compat.v1.saved_model.signature_def_utils.build_signature_def(
+            inputs=inputs,
+            outputs=outputs,
+            method_name=tf.saved_model.PREDICT_METHOD_NAME
+        )
+    )
+    builder = tf.compat.v1.saved_model.builder.SavedModelBuilder('./test')
+    builder.add_meta_graph_and_variables(
+        sess, [tf.saved_model.SERVING],
+        signature_def_map={'deeplab':prediction_signature}
+    )
+    builder.save(as_text=True)
+    print('Done exporting!')
+
 
 def inference(image, mask):
     FLAGS = ng.Config('inpaint.yml')
@@ -82,8 +139,8 @@ def main():
     parser = argparse.ArgumentParser()
     args = parser.parse_args()
 
-    args.dataset = '/home/rudolfs/Desktop/generative_inpainting/input-test'
-    args.output_dir = '/home/rudolfs/Desktop/generative_inpainting/input-test/out'  # output directory
+    args.dataset = '/home/henri/datasets/artifacts/panos/pan-21-07-2021/data'
+    args.output_dir = './output'  # output directory
 
     paths_image, paths_mask = utils.read_paths(dataset_path=args.dataset, image_suffix=IMAGE_SUFFIX, mask_suffix=MASK_SUFFIX)
 
@@ -153,6 +210,28 @@ def main():
         filename = os.path.join(args.output_dir, os.path.splitext(os.path.basename(path_image))[0] + INPAINT_SUFFIX)
         cv2.imwrite(filename, image)
 
+def test_serve():
+    import requests
+    import base64
+    import json
+    import numpy as np
+
+    MODEL_BASE_PATH = 'models'
+    MODEL_NAME = 'deeplab'
+    url = f'http://localhost:8501/v1/{MODEL_BASE_PATH}/{MODEL_NAME}:predict'
+    image_path = '/home/henri/Downloads/merged.jpg'
+
+    with open(image_path, "rb") as f:
+        image_bytes = f.read()
+    data = {"signature_name": "deeplab", "inputs": {"images": [{"b64": base64.b64encode(image_bytes).decode("utf-8")}]}}
+    response = requests.post(url, data=json.dumps(data))
+    if response.status_code == 200:
+        image = json.loads(response.text)['outputs']
+        image = np.asarray(image, dtype=np.uint8)
+        cv2.imwrite('./img.jpg', image[0])
+
 
 if __name__ == "__main__":
+    # export_model()
+    # test_serve
     main()
