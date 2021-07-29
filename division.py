@@ -12,7 +12,7 @@ from inpaint_model import InpaintCAModel
 
 tf.compat.v1.disable_eager_execution()
 
-CHECKPOINT_DIR = '/home/henri/projects/deepfill/models/mytrain'
+CHECKPOINT_DIR = '/home/henri/projects/deepfill/checkpoints/mytrain'
 INPUT_SIZE = 256  # input image size for Generator 512
 IMAGE_SUFFIX = '_hdrnet.jpg'
 MASK_SUFFIX = '_inpainted_mask.png'
@@ -21,6 +21,21 @@ LOCAL_CACHE= False
 
 MIN_BBOX_AREA = 50 * 50
 OVERLAP_DISTANCE = 200
+
+PATCHING_TYPE = 'CONV' # CONTOUR | CONV | CONVEX
+
+def cache(patch_dir, artifact_name, bidx, pidx, image_patch, mask_patch, inpaint_patch, output_patch):
+    # TODO: cidx is not unique
+    # TODO: mask is not printed
+    mask_filename = os.path.join(patch_dir, artifact_name + f'-bbox{bidx}-patch{pidx}-mask.jpg')
+    image_filename = os.path.join(patch_dir, artifact_name + f'-bbox{bidx}-patch{pidx}-image.jpg')
+    inpaint_filename = os.path.join(patch_dir, artifact_name + f'-bbox{bidx}-patch{pidx}-inpaint.jpg')
+    output_filename = os.path.join(patch_dir, artifact_name + f'-bbox{bidx}-patch{pidx}-output.jpg')
+
+    cv2.imwrite(mask_filename, mask_patch)
+    cv2.imwrite(image_filename, image_patch)
+    cv2.imwrite(inpaint_filename, inpaint_patch)
+    cv2.imwrite(output_filename, output_patch)
 
 def model_compile():
     FLAGS = ng.Config('inpaint.yml')
@@ -58,6 +73,29 @@ def static_inference(sess, input_layer, output_layer, image, mask):
     output_image = output_image[0][:, :, ::-1]
     return output_image
 
+def mask_close_to_edges(image, bboxes):
+    # check is there any bbox which is too close to vertical edges  
+    is_close = False
+    max_distance = 0
+    thres = INPUT_SIZE # distance from bbox to edge, which we consider too close
+    image_w = image.shape[1]
+    for bbox in bboxes:
+        x, _, w, _ = bbox
+        if x < thres or x + w > image_w - thres:
+            is_close = True
+            # which edge it is near (we need to copy whole bbox)
+            if x < image_w - (x + w): # left side closer
+                max_distance = max(max_distance, x + w)  
+            else: # right side closer
+                max_distance = max(max_distance, image_w - x)
+        # x, y, w, h = None, None, None, None
+    # assure distance is enough for patching
+    max_distance = max(max_distance, INPUT_SIZE)
+        
+    # add more to distance, so new edge wont touch opposite bbox
+    max_distance += 2 * thres
+    return is_close, max_distance            
+
 
 def main():
     parser = argparse.ArgumentParser()
@@ -65,7 +103,7 @@ def main():
 
     # args.dataset = '/mnt/machine_learning/datasets/hm_dataset/reports/report-13-05-2021/data'
     args.dataset = '/home/henri/datasets/artifacts/panos/pan-21-07-2021/data'
-    args.output_dir = '/home/henri/datasets/artifacts/panos/pan-21-07-2021/mytrain'  # output directory
+    args.output_dir = '/home/henri/datasets/artifacts/panos/pan-21-07-2021/mytrain-conv'  # output directory
 
     paths_image, paths_mask = utils.read_paths(dataset_path=args.dataset, image_suffix=IMAGE_SUFFIX, mask_suffix=MASK_SUFFIX)
 
@@ -81,151 +119,186 @@ def main():
     sess, input_layer, output_layer = model_compile()    
 
     for path_image, path_mask in zip(paths_image, paths_mask):
-        print('Artifact ', path_image, path_mask)
+        artifact_name = os.path.splitext(os.path.basename(path_image))[0]
+        print(f'Artifact: {artifact_name}')
 
         # raw mask bg 0, fg 1
         raw_mask = cv2.imread(path_mask)
+        image = cv2.imread(path_image)
 
         # convert mask to grayscale and threshold
         mask = cv2.cvtColor(raw_mask, cv2.COLOR_BGR2GRAY)
         _, mask = cv2.threshold(mask, 64, 255, cv2.THRESH_BINARY)
-        # raw_mask = None
 
         if cv2.findNonZero(mask) is None:
             print("image doesn't have non-zero pixels")
             continue
-        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        if not contours:
-            print("image doesn't have any contours")
-            continue
 
-        # get bounding boxes (returned filtered mask)
-        bboxes, mask = utils.get_bboxes(contours=contours, mask=mask, min_bbox_area=MIN_BBOX_AREA, overlap_distance=OVERLAP_DISTANCE)
+        # base contours are the ones used on first patching 
+        base_contours = utils.get_contours(image=mask)
 
-        if not bboxes:
-            print("image doesn't have any bboxes")
-            continue
+        # filter out small contours
+        # base_contours = utils.filter_small_contours(contours=base_contours, min_bbox_area=MIN_BBOX_AREA)
 
-        image = cv2.imread(path_image)
+        # get bounding boxes 
+        bboxes = utils.get_bboxes(contours=base_contours)
+        # mask=mask, min_bbox_area=MIN_BBOX_AREA, overlap_distance=OVERLAP_DISTANCE
 
-        # check is there any bbox which is too close to artifact vertical edges  
-        is_close = False
-        max_distance = 0
-        thres = INPUT_SIZE # distance from bbox to edge, which we consider too close
-        for bbox in bboxes:
-            x, y, w, h = bbox
-            if x < thres or x + w > image.shape[1] - thres:
-                is_close = True
-                # to calculate max distance from bbox to edge, understand to which edge it is near (we need to copy whole bbox)
-                if x < image.shape[1] - (x + w): # left side closer
-                    max_distance = max(max_distance, x + w)  
-                else: # right side closer
-                    max_distance = max(max_distance, image.shape[1] - x)
-        # x, y, w, h = None, None, None, None
-                
-        # assure distance is enough for patching
-        max_distance = max(max_distance, INPUT_SIZE)
-        
-        # add more to distance, so new edge wont touch opposite bbox
-        max_distance += 2 * thres
-                
-        mask = np.expand_dims(mask, axis=2)
-
-        # copy opposite edge
+        # copy opposite edges if needed
+        is_close, max_distance = mask_close_to_edges(mask, bboxes)
         if is_close is True:
             upd_image = np.zeros(shape=(image.shape[0], image.shape[1] + 2 * max_distance, image.shape[2]))
             upd_image[:, max_distance:-max_distance, :] = np.copy(image)
             upd_image[:, :max_distance ,:] = np.copy(image[:, -max_distance:, :])
             upd_image[:, -max_distance:, :] = np.copy(image[:, :max_distance, :])
-            image = upd_image
+            image = upd_image.astype(np.uint8)
 
-            upd_mask = np.zeros(shape=(mask.shape[0], mask.shape[1] + 2 * max_distance, mask.shape[2]))
-            upd_mask[:, max_distance:-max_distance, :] = np.copy(mask)
-            upd_mask[:, :max_distance ,:] = np.copy(mask[:, -max_distance:, :])
-            upd_mask[:, -max_distance:, :] = np.copy(mask[:, :max_distance, :])
-            mask = upd_mask
+            upd_mask = np.zeros(shape=(mask.shape[0], mask.shape[1] + 2 * max_distance))
+            upd_mask[:, max_distance:-max_distance] = np.copy(mask)
+            upd_mask[:, :max_distance] = np.copy(mask[:, -max_distance:])
+            upd_mask[:, -max_distance:] = np.copy(mask[:, :max_distance])
+            mask = upd_mask.astype(np.uint8)
     
             # adjust x coordinates of bboxes
             for i in range(len(bboxes)):
                 bboxes[i] = (bboxes[i][0] + max_distance, *bboxes[i][1:])
-        # upd_image = None
-        # upd_mask = None
 
-        artifact_name = os.path.splitext(os.path.basename(path_image))[0]
-        for idx, bbox in enumerate(bboxes):                      
-            print(f'bbox size {bbox}')
-            t = time.time()                                                                                                                                                                                                                           
-
-            x, y, w, h = bbox
-            finish_x = x + w
-            finish_y = y + h
-
-            # should be smaller than model input size
+        if PATCHING_TYPE == 'CONTOUR':                                                                                                                                                                                              
+            # try stride max(w, h) // n
             stride = INPUT_SIZE // 4
 
-            # bbox x0, y0 will be the center of patch (if there is enough )
-            px = x - INPUT_SIZE // 2
-            py = y - INPUT_SIZE // 2
+            # loop bboxes with only one external contour
+            for bidx, bbox in enumerate(bboxes):
+                print(f'Box: {bidx}')
+                t = time.time()
+                x, y, w, h = bbox
+                mask_bbox = mask[y:y+h, x:x+w]
 
-            i = 0
-            while py < finish_y:
-                while px < finish_x:
-                    mask_patch = mask[py:py+INPUT_SIZE, px:px+INPUT_SIZE]
-                    image_patch = image[py:py+INPUT_SIZE, px:px+INPUT_SIZE]
+                # while bbox of that contour has white pixels
+                while cv2.findNonZero(mask_bbox) is not None: 
+                    # find first contour
+                    # TODO: after patching there could be multiple contours
+                    contour = utils.get_contours(image=mask_bbox)[0]
 
-                    if cv2.findNonZero(mask_patch) is None:
-                        px += stride
-                        continue
+                    # do patching while point idx is in range 
+                    pidx = 0
+                    while pidx < len(contour):
+                        coord = contour[pidx]
+                        py, px = coord[0][1], coord[0][0] 
+                        print(f'Contour point: y{py} x{px}')
 
-                    if LOCAL_CACHE is True:
-                        # save mask and image
-                        mask_filename = os.path.join(args.patch_dir, artifact_name + f'-bbox{idx}-patch{i}-mask.jpg')
-                        image_filename = os.path.join(args.patch_dir, artifact_name + f'-bbox{idx}-patch{i}-image.jpg')
-                        cv2.imwrite(mask_filename, np.dstack([mask_patch.astype(np.uint8)] * 3))
-                        cv2.imwrite(image_filename, image_patch)
+                        diff = INPUT_SIZE // 2
+                        mask_patch = mask[y+py-diff:y+py+diff, x+px-diff:x+px+diff]
+                        image_patch = image[y+py-diff:y+py+diff, x+px-diff:x+px+diff]
 
-                    # check shapes are correct
-                    if image_patch[:,:,0].shape != (INPUT_SIZE, INPUT_SIZE) or \
-                        mask_patch[:,:,0].shape != (INPUT_SIZE, INPUT_SIZE):
-                        print('Incorrect patch size')
-                        exit(-1)
+                        # check for white pixel
+                        if cv2.findNonZero(mask_patch) is None:
+                            pidx += stride
+                            continue
 
-                    # inference
-                    inpaint_patch = static_inference(sess, input_layer, output_layer, image_patch, mask_patch)
+                        # check shapes are correct
+                        if image_patch[:,:,0].shape != (INPUT_SIZE, INPUT_SIZE) or mask_patch.shape != (INPUT_SIZE, INPUT_SIZE):
+                            print('Incorrect patch size')
+                            exit(-1)
 
-                    if LOCAL_CACHE is True:
-                        # save inpaint
-                        inpaint_filename = os.path.join(args.patch_dir, artifact_name + f'-bbox{idx}-patch{i}-inpaint.jpg')
-                        cv2.imwrite(inpaint_filename, inpaint_patch)
+                        # inference
+                        inpaint_patch = static_inference(sess, input_layer, output_layer, image_patch, mask_patch)
 
-                    # leave half of the hole to next patch to inpaint
-                    mask_patch = mask_patch / 255.
-                    partial_mask_patch = np.array(mask_patch, copy=True)
-                    partial_mask_patch[:, -stride // 2:, :] = 0
+                        # leave half of the mask to next patch to inpaint (residual)
+                        mask_patch = mask_patch / 255.
+                        residual_mask_patch = np.array(mask_patch, copy=True)
+                        residual = stride // 2
 
-                    # blend inpaint into output
-                    output_patch = inpaint_patch * partial_mask_patch + image_patch * (1. - partial_mask_patch)
-                    output_patch = output_patch.astype(np.uint8)
+                        # calculate from which side use residual
+                        if pidx + stride < len(contour):
+                            coord_next = contour[pidx + stride]
+                            py_next, px_next = coord_next[0][1], coord_next[0][0]
+                            if py_next - py > 0:
+                                residual_mask_patch[-residual:, :] = 0
+                            elif py_next - py < 0:
+                                residual_mask_patch[:residual, :] = 0
+                            if px_next - px > 0:
+                                residual_mask_patch[:, -residual:] = 0
+                            elif px_next - px < 0:
+                                residual_mask_patch[:, :residual] = 0
 
-                    # blend output into image and remove from big mask used mask patch (invert)
-                    image[py:py+INPUT_SIZE, px:px+INPUT_SIZE] = output_patch
-                    
-                    caution = 10
-                    partial_mask_patch[:, -stride // 2 - caution:, :] = 0
-                    partial_mask_patch[-caution:, :, :] = 0
-                    mask[py:py+INPUT_SIZE, px:px+INPUT_SIZE] = ((mask_patch - partial_mask_patch) * 255.).astype(np.uint8)
+                        # blend mask patch subtracted by residual into mask
+                        mask[y+py-diff:y+py+diff, x+px-diff:x+px+diff] = ((mask_patch - residual_mask_patch) * 255.).astype(np.uint8)  
+                        # blend inpaint patch into output patch
+                        mask_patch = np.dstack([mask_patch] * 3)
+                        residual_mask_patch = np.dstack([residual_mask_patch] * 3)
+                        output_patch = inpaint_patch * residual_mask_patch + image_patch * (1. - residual_mask_patch)
+                        output_patch = output_patch.astype(np.uint8)
+                        # blend output patch into image
+                        image[y+py-diff:y+py+diff, x+px-diff:x+px+diff] = output_patch
 
-                    i += 1 
-                    px += stride
+                        if LOCAL_CACHE is True:
+                            cache(args.patch_dir, artifact_name, bidx, pidx, image_patch, mask_patch, inpaint_patch, output_patch)
+                        pidx += stride
+                print(f'Time on one bbox {bbox} inference: {time.time() - t}') 
+        elif PATCHING_TYPE == 'CONV':
+            # loop bboxes with only one external contour
+            for bidx, bbox in enumerate(bboxes):
+                print(f'Box: {bidx}')
+                t = time.time()
+
+                x, y, w, h = bbox
+                finish_x = x + w
+                finish_y = y + h
+
+                # should be smaller than model input size
+                stride = INPUT_SIZE // 4
+
+                # bbox x0, y0 will be the center of patch (if there is enough )
                 px = x - INPUT_SIZE // 2
-                py += stride
+                py = y - INPUT_SIZE // 2
 
-        print(f'Time on one bbox {bbox} inference: {time.time() - t}') 
+                i = 0
+                while py < finish_y:
+                    while px < finish_x:
+                        mask_patch = mask[py:py+INPUT_SIZE, px:px+INPUT_SIZE]
+                        image_patch = image[py:py+INPUT_SIZE, px:px+INPUT_SIZE]
+
+                        if cv2.findNonZero(mask_patch) is None:
+                            px += stride
+                            continue
+
+                        # check shapes are correct
+                        if image_patch[:,:,0].shape != (INPUT_SIZE, INPUT_SIZE) or mask_patch[:,:].shape != (INPUT_SIZE, INPUT_SIZE):
+                            print('Incorrect patch size')
+                            exit(-1)
+
+                        # inference
+                        inpaint_patch = static_inference(sess, input_layer, output_layer, image_patch, mask_patch)
+
+                        # leave half of the hole to next patch to inpaint
+                        mask_patch = mask_patch / 255.
+                        partial_mask_patch = np.array(mask_patch, copy=True)
+                        partial_mask_patch[:, -stride // 2:] = 0
+
+                        # blend mask patch subtracted by residual into mask
+                        mask[py:py+INPUT_SIZE, px:px+INPUT_SIZE] = ((mask_patch - partial_mask_patch) * 255.).astype(np.uint8)
+                        # blend inpaint into output
+                        mask_patch = np.dstack([mask_patch] * 3)
+                        partial_mask_patch = np.dstack([partial_mask_patch] * 3)
+                        output_patch = inpaint_patch * partial_mask_patch + image_patch * (1. - partial_mask_patch)
+                        output_patch = output_patch.astype(np.uint8)
+                        # blend output patch into image
+                        image[py:py+INPUT_SIZE, px:px+INPUT_SIZE] = output_patch
+                    
+                        if LOCAL_CACHE is True:
+                            cache(args.patch_dir, artifact_name, bidx, pidx, image_patch, mask_patch, inpaint_patch, output_patch)
+                        
+                        i += 1 
+                        px += stride
+                    px = x - INPUT_SIZE // 2
+                    py += stride
+                print(f'Time on one bbox {bbox} inference: {time.time() - t}') 
 
         # trim image back to save
         if is_close:
             image = image[:, max_distance:-max_distance, :]
-            mask = mask[:, max_distance:-max_distance, :]
+            mask = mask[:, max_distance:-max_distance]
         filename = os.path.join(args.output_dir, os.path.splitext(os.path.basename(path_image))[0] + INPAINT_SUFFIX)
         cv2.imwrite(filename, image)
 
