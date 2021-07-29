@@ -93,7 +93,7 @@ class InpaintCAModel(Model):
                                 activation=tf.nn.relu)
             # TODO: removed for tf.Serving, can be enabled on training to see optical flow
             # x, offset_flow = contextual_attention(x, x, mask_s, 3, 1, rate=2)
-            x = contextual_attention(x, x, mask_s, 3, 1, rate=2)
+            x, _ = contextual_attention(x, x, mask_s, 3, 1, rate=2)
             offset_flow = None
             x = gen_conv(x, 4*cnum, 3, 1, name='pmconv9')
             x = gen_conv(x, 4*cnum, 3, 1, name='pmconv10')
@@ -291,7 +291,7 @@ class InpaintCAModel(Model):
         else:
             xin = batch_incomplete
         # inpaint
-        x1, x2, flow = self.build_inpaint_net(
+        _, x2, _ = self.build_inpaint_net(
             xin, masks, reuse=reuse, training=is_training)
         batch_predict = x2
         # apply mask and reconstruct
