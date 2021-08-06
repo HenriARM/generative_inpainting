@@ -22,7 +22,7 @@ LOCAL_CACHE= False
 MIN_BBOX_AREA = 50 * 50
 OVERLAP_DISTANCE = 200
 
-PATCHING_TYPE = 'CONV' # CONTOUR | CONV | CONVEX
+PATCHING_TYPE = 'CONVEX' # CONTOUR | CONV | CONVEX
 
 def cache(patch_dir, artifact_name, bidx, pidx, image_patch, mask_patch, inpaint_patch, output_patch):
     # TODO: cidx is not unique
@@ -103,7 +103,7 @@ def main():
 
     # args.dataset = '/mnt/machine_learning/datasets/hm_dataset/reports/report-13-05-2021/data'
     args.dataset = '/home/henri/datasets/artifacts/panos/pan-21-07-2021/data'
-    args.output_dir = '/home/henri/datasets/artifacts/panos/pan-21-07-2021/mytrain-conv'  # output directory
+    args.output_dir = '/home/henri/datasets/artifacts/panos/pan-21-07-2021/mytrain-convex'  # output directory
 
     paths_image, paths_mask = utils.read_paths(dataset_path=args.dataset, image_suffix=IMAGE_SUFFIX, mask_suffix=MASK_SUFFIX)
 
@@ -294,6 +294,83 @@ def main():
                     px = x - INPUT_SIZE // 2
                     py += stride
                 print(f'Time on one bbox {bbox} inference: {time.time() - t}') 
+        elif PATCHING_TYPE == 'CONVEX':
+            # try stride max(w, h) // n
+            stride = INPUT_SIZE // 4
+
+            # mask_copy = mask.copy()
+            # mask_copy = np.dstack([mask_copy] * 3)
+            # contours = utils.get_contours(image=mask)
+            # hull = [cv2.convexHull(np.concatenate(tuple(contours), axis=0))]
+            # cv2.drawContours(mask_copy, contours=contours, contourIdx=-1, color=(255, 0, 0), thickness=4, lineType=cv2.LINE_AA)
+            # cv2.drawContours(mask_copy, contours=hull, contourIdx=-1, color=(0, 255, 0), thickness=8, lineType=cv2.LINE_AA)
+            
+            t = time.time()
+            # while mask has white pixels
+            while cv2.findNonZero(mask) is not None: 
+                # find all contours
+                contours = utils.get_contours(image=mask)
+                hull = cv2.convexHull(np.concatenate(tuple(contours), axis=0))
+
+                # do patching while point idx is in range 
+                pidx = 0
+                while pidx < len(hull):
+                    coord = hull[pidx]
+                    py, px = coord[0][1], coord[0][0] 
+                    print(f'Hull point: y{py} x{px}')
+
+                    diff = INPUT_SIZE // 2
+                    mask_patch = mask[py-diff:py+diff, px-diff:px+diff]
+                    image_patch = image[py-diff:py+diff, px-diff:px+diff]
+
+                    # check for white pixel
+                    if cv2.findNonZero(mask_patch) is None:
+                        # pidx += stride
+                        pidx += 1
+                        continue
+
+                    # check shapes are correct
+                    if image_patch[:,:,0].shape != (INPUT_SIZE, INPUT_SIZE) or mask_patch.shape != (INPUT_SIZE, INPUT_SIZE):
+                        print('Incorrect patch size')
+                        exit(-1)
+
+                    # inference
+                    inpaint_patch = static_inference(sess, input_layer, output_layer, image_patch, mask_patch)
+
+                    # # leave half of the mask to next patch to inpaint (residual)
+                    # mask_patch = mask_patch / 255.
+                    # residual_mask_patch = np.array(mask_patch, copy=True)
+                    # residual = stride // 2
+
+                    # # calculate from which side use residual
+                    # if pidx + stride < len(contour):
+                    #     coord_next = contour[pidx + stride]
+                    #     py_next, px_next = coord_next[0][1], coord_next[0][0]
+                    #     if py_next - py > 0:
+                    #         residual_mask_patch[-residual:, :] = 0
+                    #     elif py_next - py < 0:
+                    #         residual_mask_patch[:residual, :] = 0
+                    #     if px_next - px > 0:
+                    #         residual_mask_patch[:, -residual:] = 0
+                    #     elif px_next - px < 0:
+                    #         residual_mask_patch[:, :residual] = 0
+
+                    # mask[y+py-diff:y+py+diff, x+px-diff:x+px+diff] = ((mask_patch - residual_mask_patch) * 255.).astype(np.uint8)  
+                    # blend inpaint patch into output patch
+                    # residual_mask_patch = np.dstack([residual_mask_patch] * 3)
+                    mask_patch = mask_patch / 255.
+                    mask_patch = np.dstack([mask_patch] * 3)
+                    output_patch = inpaint_patch * mask_patch + image_patch * (1. - mask_patch)
+                    output_patch = output_patch.astype(np.uint8)
+                    # blend output patch into image
+                    image[py-diff:py+diff, px-diff:px+diff] = output_patch
+                    # blend mask patch subtracted by residual into mask
+                    mask[py-diff:py+diff, px-diff:px+diff] = 0
+
+                    # if LOCAL_CACHE is True:
+                    #     cache(args.patch_dir, artifact_name, bidx, pidx, image_patch, mask_patch, inpaint_patch, output_patch)
+                    # pidx += stride
+                # print(f'Time on one bbox {bbox} inference: {time.time() - t}')             
 
         # trim image back to save
         if is_close:
