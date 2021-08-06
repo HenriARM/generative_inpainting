@@ -11,3 +11,4 @@ models/
 checkpoints/
 # training checkpoints and logs
 training/
+validation/
