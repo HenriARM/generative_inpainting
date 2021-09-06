@@ -8,21 +8,27 @@ import os
 import glob
 import math
 import argparse
+import sys
+from scipy.linalg import sqrtm 
 
 import numpy as np
 from cv2 import cv2
 from PIL import Image, ImageDraw
 import tensorflow as tf
+from tensorflow.python.ops.gen_batch_ops import batch
 
 import neuralgymtf2 as ng
 FLAGS = ng.Config('inpaint.yml')
 from inpaint_model import InpaintCAModel
 
+tf.get_logger().setLevel('ERROR')
 tf.compat.v1.disable_eager_execution()
 
 INPUT_SIZE = 256
 IMAGE_SUFFIX = '.jpg'
 MASK_SUFFIX = '_mask.png'
+
+########################################## MASK GENERATION ####################################################
 
 def random_bbox(FLAGS):
     # returns tuple (top, left, height, width)
@@ -100,24 +106,79 @@ def generate_irregular_mask(FLAGS):
     mask = np.reshape(mask, (1, H, W, 1))
     return mask
 
-def model_compile(checkpoint_dir):
+def generate_mask():
+    bbox = random_bbox(FLAGS)
+    regular_mask = generate_regular_mask(FLAGS, bbox)
+    irregular_mask = generate_irregular_mask(FLAGS)
+    return np.logical_or(
+        regular_mask.astype(np.bool),
+        irregular_mask.astype(np.bool)).astype(np.float32)
+
+############################################## FID ####################################################
+
+# https://machinelearningmastery.com/how-to-implement-the-frechet-inception-distance-fid-from-scratch/
+def compile_fid(batch_size):
+    image_ph = tf.compat.v1.placeholder(tf.float32, shape=(batch_size, INPUT_SIZE, INPUT_SIZE, 3))
+    model_input_size = min(INPUT_SIZE, 299)
+    model_input_shape = (model_input_size, model_input_size, 3)
+    # reshape image to input into model
+    res_ph = tf.reshape(tensor=image_ph, shape=(image_ph.shape[0], *model_input_shape))
+    # scale pixels between -1 and 1, sample-wise. 
+    sc_ph = tf.compat.v1.keras.applications.inception_v3.preprocess_input(res_ph)
+    model =  tf.compat.v1.keras.applications.inception_v3.InceptionV3(include_top=False,
+        pooling='avg', input_shape=model_input_shape, weights='imagenet')
+    return image_ph, model(sc_ph)
+
+# input images of shape (B, H, W, C)
+def calc_fid(input_layer, output_layer, img1, img2):
+    # https://stackoverflow.com/questions/51107527/integrating-keras-model-into-tensorflow
+    import tensorflow.compat.v1.keras.backend as K
+    with K.get_session() as sess:
+        K.set_session(sess)
+        z1 = sess.run(output_layer, feed_dict={input_layer: img1})
+        z2 = sess.run(output_layer, feed_dict={input_layer: img2})
+          
+    # calculate mean and covariance statistics (mean for all batches)
+    mu1, sigma1 = z1.mean(axis=0), np.cov(z1, rowvar=False)
+    mu2, sigma2 = z2.mean(axis=0), np.cov(z2, rowvar=False)
+
+    # calculate sum squared difference between means
+    ssdiff = np.sum((mu1 - mu2)**2.0)
+	# calculate sqrt of product between cov
+    covmean = sqrtm(sigma1.dot(sigma2))
+    # check and correct imaginary numbers from sqrt
+    if np.iscomplexobj(covmean):
+        covmean = covmean.real
+	# calculate score
+    fid_score = ssdiff + np.trace(sigma1 + sigma2 - 2.0 * covmean)
+    return fid_score.astype(np.float32)
+
+################################################## INPAINTING #####################################################
+
+# Builds model Graph
+def compile_inpaint(checkpoint_dirname):      
+    g = tf.compat.v1.Graph()
+    with g.as_default():
+        # init model graph
+        model = InpaintCAModel()
+        input_image_ph = tf.compat.v1.placeholder(tf.float32, shape=(1, INPUT_SIZE, INPUT_SIZE * 2, 3))
+        output = model.build_server_graph(FLAGS, input_image_ph, reuse=tf.compat.v1.AUTO_REUSE)
+        # post process graph
+        output = (output + 1.) * 127.5
+        output = tf.reverse(output, [-1])
+        output = tf.saturate_cast(output, tf.uint8)
+        # graph for assigning checkpoint loaded vars
+        vars_list = tf.compat.v1.get_collection(tf.compat.v1.GraphKeys.GLOBAL_VARIABLES)
+        assign_ops = []
+        for var in vars_list:
+            var_value = tf.train.load_variable(checkpoint_dirname, var.name)
+            assign_ops.append(tf.compat.v1.assign(var, var_value))
+
+    # create session with config for model and graph
     sess_config = tf.compat.v1.ConfigProto()
     sess_config.gpu_options.allow_growth = True
-    sess = tf.compat.v1.Session(config=sess_config)
-
-    model = InpaintCAModel()
-    input_image_ph = tf.compat.v1.placeholder(tf.float32, shape=(1, INPUT_SIZE, INPUT_SIZE * 2, 3))
-    output = model.build_server_graph(FLAGS, input_image_ph, reuse=tf.compat.v1.AUTO_REUSE)
-    output = (output + 1.) * 127.5
-    output = tf.reverse(output, [-1])
-    output = tf.saturate_cast(output, tf.uint8)
-    vars_list = tf.compat.v1.get_collection(tf.compat.v1.GraphKeys.GLOBAL_VARIABLES)
-    assign_ops = []
-    for var in vars_list:
-        vname = var.name
-        from_name = vname
-        var_value = tf.train.load_variable(checkpoint_dir, from_name)
-        assign_ops.append(tf.compat.v1.assign(var, var_value))
+    sess = tf.compat.v1.Session(config=sess_config, graph=g)
+    # assign checkpoint vars
     sess.run(assign_ops)
     print('Model loaded')
     return sess, input_image_ph, output
@@ -135,19 +196,74 @@ def static_inference(sess, input_layer, output_layer, image, mask):
     output_image = output_image[0][:, :, ::-1]
     return output_image
 
-def generate_mask():
-    bbox = random_bbox(FLAGS)
-    regular_mask = generate_regular_mask(FLAGS, bbox)
-    irregular_mask = generate_irregular_mask(FLAGS)
-    return np.logical_or(
-        regular_mask.astype(np.bool),
-        irregular_mask.astype(np.bool)).astype(np.float32)
+################################################## SUMMARY #####################################################
 
-def validate(checkpoint_dir, image_abspaths, mask_abspaths):
-    # compile model
-    sess, input_layer, output_layer = model_compile(checkpoint_dir=checkpoint_dir)  
+# TODO: TB in Runs written './', subfold each checkpoint https://github.com/tensorflow/tensorflow/issues/1548 name=f'step_{checkpoint_step}'
+# TODO: tf.print is not working
+# TODO: change each TB event file name, to know which checkpoint it is
+
+# Builds Tensorboard summary Graph
+def compile_val_summary(summary_dirname, checkpoint_step, batch_size):
+    g = tf.compat.v1.Graph()
+    with g.as_default():
+        image_ph = tf.compat.v1.placeholder(tf.uint8, shape=(batch_size, INPUT_SIZE, INPUT_SIZE, 3))
+        mask_ph = tf.compat.v1.placeholder(tf.uint8, shape=(batch_size, INPUT_SIZE, INPUT_SIZE, 3))
+        output_ph = tf.compat.v1.placeholder(tf.uint8, shape=(batch_size, INPUT_SIZE, INPUT_SIZE, 3))
+        fid_ph = tf.compat.v1.placeholder(tf.float32, shape=())
+
+        # graph for creating Tensorboard file writer
+        writer = tf.summary.create_file_writer(logdir=summary_dirname)
+        with writer.as_default():
+            # draw image, mask, output
+            data = tf.concat([image_ph, mask_ph, output_ph], axis=2)
+            tf.summary.image(name='val_inpaint', max_outputs=batch_size, data=data, step=checkpoint_step)
+
+            # scalars
+            l1 = tf.reduce_mean(tf.abs(tf.cast((image_ph - output_ph),dtype=tf.float32)))
+            psnr = tf.reduce_mean(tf.image.psnr(image_ph, output_ph, max_val=255), axis=0)
+            ssim = tf.reduce_mean(tf.image.ssim(image_ph, output_ph, max_val=255), axis=0)
+            # ssim for all color channels
+            ms_ssim = tf.reduce_mean(tf.image.ssim_multiscale(image_ph, output_ph, max_val=255), axis=0)
+            
+            tf.print(f'Metrics1:', output_stream=sys.stdout)
+            tf.print(f'Metrics2: l1 {l1}, psnr {psnr}, ssim {ssim}, ms_ssim {ms_ssim}, fid {fid_ph}')
+            tf.print(f'Metrics3: l1 {l1}, psnr {psnr}, ssim {ssim}, ms_ssim {ms_ssim}, fid {fid_ph}', output_stream=sys.stdout)
+
+            tf.summary.scalar('l1', l1, checkpoint_step)
+            tf.summary.scalar('psnr', psnr, checkpoint_step)
+            tf.summary.scalar('ssim', ssim, checkpoint_step)
+            tf.summary.scalar('ms_ssim', ms_ssim, checkpoint_step)
+            # TODO: ?
+            tf.summary.scalar('fid', fid_ph, checkpoint_step)
+
+        summary_ops = tf.compat.v1.summary.all_v2_summary_ops()
+        writer_flush = writer.flush()
+    sess = tf.compat.v1.Session(graph=g)
+    # init file_writer so during validation it will be available 
+    sess.run(writer.init())
+    print('Summary loaded')
+    return sess, summary_ops, writer_flush, image_ph, mask_ph, output_ph, fid_ph
+
+################################################## MAIN #####################################################
+
+def np_concat(arr, el):
+    el = np.expand_dims(el, axis=0)
+    if arr is None:
+        arr = el
+    else:
+        arr = np.concatenate((arr, el), axis=0)
+    return arr
+
+# TODO: Compile only once deepfill and inception, and summary graph 
+def validate_checkpoint(checkpoint_dirname, checkpoint_step, image_abspaths, mask_abspaths):
+    # compile DeepFill inpainting model
+    model_sess, input_layer, output_layer = compile_inpaint(checkpoint_dirname=checkpoint_dirname)
+    print('DeepFill compiled...')
 
     # run validation
+    images = None
+    masks = None
+    outputs = None
     for image_abspath, mask_abspath in zip(image_abspaths, mask_abspaths):
         print(os.path.basename(image_abspath))
 
@@ -159,18 +275,42 @@ def validate(checkpoint_dir, image_abspaths, mask_abspaths):
         _, mask = cv2.threshold(mask, 64, 255, cv2.THRESH_BINARY)
 
         # inference
-        inpaint = static_inference(sess, input_layer, output_layer, image, mask)
+        inpaint = static_inference(model_sess, input_layer, output_layer, image, mask)
         mask = np.expand_dims(mask, axis=-1)
         mask = np.dstack([mask] * 3)
-        mask = mask / 255.
-        output = inpaint * mask + image * (1. - mask)
+        mask_norm = mask / 255.
+        output = inpaint * mask_norm + image * (1. - mask_norm)
         output = output.astype(np.uint8)
+    
+        # store for summary
+        images = np_concat(images, image)
+        masks = np_concat(masks, mask)
+        outputs = np_concat(outputs, output)
+
         #cv2.imshow('img', image)
         #cv2.imshow('mask', mask)
         #cv2.imshow('inpaint', inpaint)
         #cv2.imshow('out', output)
         #cv2.waitKey(0)
 
+    batch_size = images.shape[0]
+    
+    # compile Inception model for FID
+    fid_input_layer, fid_output_layer = compile_fid(batch_size)
+    print('InceptionV3 compiled...')
+    fid_score = calc_fid(fid_input_layer, fid_output_layer, images, masks)
+    print(f'FID score {fid_score}')
+
+    # compile summary
+    # TODO: change name of val_logs
+    summary_sess, summary_ops, writer_flush, image_ph, mask_ph, output_ph, fid_ph = compile_val_summary(
+        summary_dirname='/home/henri/projects/deepfill/tb', 
+        checkpoint_step=checkpoint_step,
+        batch_size=batch_size)
+
+    # summary
+    summary_sess.run(summary_ops, feed_dict={image_ph: images, mask_ph: masks, output_ph: outputs, fid_ph:fid_score})
+    summary_sess.run(writer_flush)
 
 def get_current_snapshot(ckpt):
     f = open(ckpt, 'r')
@@ -251,11 +391,38 @@ def main():
             last_snapshot = new_snapshot
             print(f'New snapshot: {last_snapshot}')
             print('Valdiation...')
-            validate(
-                checkpoint_dir=checkpoint_dirname,
+            validate_checkpoint(checkpoint_dirname=checkpoint_dirname,
+                checkpoint_step=last_snapshot,
                 image_abspaths=image_abspaths,
                 mask_abspaths=mask_abspaths)
+        print('Throttle...')
         time.sleep(INTERVAL)
 
 if __name__ == "__main__":
     main()
+
+'''
+FID calculation inside tf.Session using tf functions
+
+def tf_cov(x):
+    vx = tf.matmul(tf.transpose(x), x) / x.shape[0]
+    mean = tf.reduce_mean(x, axis=0, keepdims=True)
+    mx = tf.matmul(tf.transpose(mean), mean)
+    return tf.cast(vx - mx, tf.float32)
+
+# input Z vector with (B, num_features)
+def tf_mean_var(x):
+    # feature-wise mean of the real and generated images, 
+    # where each element is the mean feature observed across images
+    mu = tf.reduce_mean(x, axis=0)
+    sigma = tf_cov(x)
+    return mu, sigma
+
+# calculate sum squared difference between means
+ssdiff = tf.reduce_sum((mu1 - mu2)**2.0)
+# calculate sqrt of product between cov
+covmean = tf.linalg.sqrtm(tf.tensordot(sigma1, sigma2, axes=1))
+# calculate score
+return ssdiff + tf.linalg.trace(sigma1 + sigma2 - 2.0 * covmean)
+
+'''
