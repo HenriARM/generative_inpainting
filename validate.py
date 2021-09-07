@@ -127,21 +127,24 @@ def compile_fid(batch_size):
     sc_ph = tf.compat.v1.keras.applications.inception_v3.preprocess_input(res_ph)
     model =  tf.compat.v1.keras.applications.inception_v3.InceptionV3(include_top=False,
         pooling='avg', input_shape=model_input_shape, weights='imagenet')
-    return image_ph, model(sc_ph)
-
-# input images of shape (B, H, W, C)
-def calc_fid(input_layer, output_layer, img1, img2):
+    
     # https://stackoverflow.com/questions/51107527/integrating-keras-model-into-tensorflow
     import tensorflow.compat.v1.keras.backend as K
-    with K.get_session() as sess:
-        K.set_session(sess)
-        z1 = sess.run(output_layer, feed_dict={input_layer: img1})
-        z2 = sess.run(output_layer, feed_dict={input_layer: img2})
+    sess = K.get_session()
+    K.set_session(sess)
+    return sess, image_ph, model(sc_ph)
+
+# input images of shape (B, H, W, C)
+def calc_fid(sess, input_layer, output_layer, img1, img2):
+    # with K.get_session() as sess:
+    #     K.set_session(sess)
+    z1 = sess.run(output_layer, feed_dict={input_layer: img1})
+    z2 = sess.run(output_layer, feed_dict={input_layer: img2})
           
     # calculate mean and covariance statistics (mean for all batches)
     mu1, sigma1 = z1.mean(axis=0), np.cov(z1, rowvar=False)
     mu2, sigma2 = z2.mean(axis=0), np.cov(z2, rowvar=False)
-
+      
     # calculate sum squared difference between means
     ssdiff = np.sum((mu1 - mu2)**2.0)
 	# calculate sqrt of product between cov
@@ -247,7 +250,7 @@ def np_concat(arr, el):
     return arr
 
 # TODO: Compile only once deepfill and inception, and summary graph 
-def validate_checkpoint(checkpoint_dirname, checkpoint_step, image_abspaths, mask_abspaths, summary_dirname):
+def validate_checkpoint(checkpoint_dirname, checkpoint_step, image_abspaths, mask_abspaths, summary_dirname, fid_sess, fid_input_layer, fid_output_layer):
     # compile DeepFill inpainting model
     model_sess, input_layer, output_layer = compile_inpaint(checkpoint_dirname=checkpoint_dirname)
     print('DeepFill compiled...')
@@ -287,10 +290,8 @@ def validate_checkpoint(checkpoint_dirname, checkpoint_step, image_abspaths, mas
 
     batch_size = images.shape[0]
     
-    # compile Inception model for FID
-    fid_input_layer, fid_output_layer = compile_fid(batch_size)
-    print('InceptionV3 compiled...')
-    fid_score = calc_fid(fid_input_layer, fid_output_layer, images, masks)
+    # calculate FID score
+    fid_score = calc_fid(fid_sess, fid_input_layer, fid_output_layer, images, masks)
     print(f'FID score {fid_score}')
 
     # compile summary
@@ -371,6 +372,10 @@ def main():
     # check same amount of images and masks
     assert len(image_abspaths) == len(mask_abspaths)
 
+    # compile Inception model for FID
+    fid_sess, fid_input_layer, fid_output_layer = compile_fid(batch_size=len(image_abspaths))
+    print('InceptionV3 compiled...')
+
     # check each interval for new trained checkpoint
     INTERVAL = 5 # 5 * 60
     last_snapshot = -1
@@ -384,7 +389,10 @@ def main():
                 checkpoint_step=last_snapshot,
                 image_abspaths=image_abspaths,
                 mask_abspaths=mask_abspaths,
-                summary_dirname=val_logs_dirname)
+                summary_dirname=val_logs_dirname,
+                fid_sess=fid_sess,
+                fid_input_layer=fid_input_layer,
+                fid_output_layer=fid_output_layer)
         print('Throttle...')
         time.sleep(INTERVAL)
 
