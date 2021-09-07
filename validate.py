@@ -198,10 +198,6 @@ def static_inference(sess, input_layer, output_layer, image, mask):
 
 ################################################## SUMMARY #####################################################
 
-# TODO: TB in Runs written './', subfold each checkpoint https://github.com/tensorflow/tensorflow/issues/1548 name=f'step_{checkpoint_step}'
-# TODO: tf.print is not working
-# TODO: change each TB event file name, to know which checkpoint it is
-
 # Builds Tensorboard summary Graph
 def compile_val_summary(summary_dirname, checkpoint_step, batch_size):
     g = tf.compat.v1.Graph()
@@ -212,7 +208,7 @@ def compile_val_summary(summary_dirname, checkpoint_step, batch_size):
         fid_ph = tf.compat.v1.placeholder(tf.float32, shape=())
 
         # graph for creating Tensorboard file writer
-        writer = tf.summary.create_file_writer(logdir=summary_dirname)
+        writer = tf.summary.create_file_writer(logdir=summary_dirname, filename_suffix=f'.ckpt_{checkpoint_step}')
         with writer.as_default():
             # draw image, mask, output
             data = tf.concat([image_ph, mask_ph, output_ph], axis=2)
@@ -225,24 +221,20 @@ def compile_val_summary(summary_dirname, checkpoint_step, batch_size):
             # ssim for all color channels
             ms_ssim = tf.reduce_mean(tf.image.ssim_multiscale(image_ph, output_ph, max_val=255), axis=0)
             
-            tf.print(f'Metrics1:', output_stream=sys.stdout)
-            tf.print(f'Metrics2: l1 {l1}, psnr {psnr}, ssim {ssim}, ms_ssim {ms_ssim}, fid {fid_ph}')
-            tf.print(f'Metrics3: l1 {l1}, psnr {psnr}, ssim {ssim}, ms_ssim {ms_ssim}, fid {fid_ph}', output_stream=sys.stdout)
-
             tf.summary.scalar('l1', l1, checkpoint_step)
             tf.summary.scalar('psnr', psnr, checkpoint_step)
             tf.summary.scalar('ssim', ssim, checkpoint_step)
             tf.summary.scalar('ms_ssim', ms_ssim, checkpoint_step)
-            # TODO: ?
             tf.summary.scalar('fid', fid_ph, checkpoint_step)
 
         summary_ops = tf.compat.v1.summary.all_v2_summary_ops()
         writer_flush = writer.flush()
+        print_op = tf.print('Metrics ckpt', checkpoint_step, ' l1 ', l1, ' psnr ', psnr, ' ssim ', ssim, ' ms_ssim ', ms_ssim, ' fid ', fid_ph, output_stream=sys.stdout)
     sess = tf.compat.v1.Session(graph=g)
     # init file_writer so during validation it will be available 
     sess.run(writer.init())
     print('Summary loaded')
-    return sess, summary_ops, writer_flush, image_ph, mask_ph, output_ph, fid_ph
+    return sess, summary_ops, writer_flush, print_op, image_ph, mask_ph, output_ph, fid_ph
 
 ################################################## MAIN #####################################################
 
@@ -255,7 +247,7 @@ def np_concat(arr, el):
     return arr
 
 # TODO: Compile only once deepfill and inception, and summary graph 
-def validate_checkpoint(checkpoint_dirname, checkpoint_step, image_abspaths, mask_abspaths):
+def validate_checkpoint(checkpoint_dirname, checkpoint_step, image_abspaths, mask_abspaths, summary_dirname):
     # compile DeepFill inpainting model
     model_sess, input_layer, output_layer = compile_inpaint(checkpoint_dirname=checkpoint_dirname)
     print('DeepFill compiled...')
@@ -302,15 +294,12 @@ def validate_checkpoint(checkpoint_dirname, checkpoint_step, image_abspaths, mas
     print(f'FID score {fid_score}')
 
     # compile summary
-    # TODO: change name of val_logs
-    summary_sess, summary_ops, writer_flush, image_ph, mask_ph, output_ph, fid_ph = compile_val_summary(
-        summary_dirname='/home/henri/projects/deepfill/tb', 
+    summary_sess, summary_ops, writer_flush, print_op, image_ph, mask_ph, output_ph, fid_ph = compile_val_summary(
+        summary_dirname=summary_dirname, 
         checkpoint_step=checkpoint_step,
         batch_size=batch_size)
 
-    # summary
-    summary_sess.run(summary_ops, feed_dict={image_ph: images, mask_ph: masks, output_ph: outputs, fid_ph:fid_score})
-    summary_sess.run(writer_flush)
+    summary_sess.run([summary_ops, writer_flush, print_op], feed_dict={image_ph: images, mask_ph: masks, output_ph: outputs, fid_ph:fid_score})
 
 def get_current_snapshot(ckpt):
     f = open(ckpt, 'r')
@@ -394,7 +383,8 @@ def main():
             validate_checkpoint(checkpoint_dirname=checkpoint_dirname,
                 checkpoint_step=last_snapshot,
                 image_abspaths=image_abspaths,
-                mask_abspaths=mask_abspaths)
+                mask_abspaths=mask_abspaths,
+                summary_dirname=val_logs_dirname)
         print('Throttle...')
         time.sleep(INTERVAL)
 
