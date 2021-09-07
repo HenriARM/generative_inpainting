@@ -291,7 +291,7 @@ def validate_checkpoint(checkpoint_dirname, checkpoint_step, image_abspaths, mas
     batch_size = images.shape[0]
     
     # calculate FID score
-    fid_score = calc_fid(fid_sess, fid_input_layer, fid_output_layer, images, masks)
+    fid_score = calc_fid(fid_sess, fid_input_layer, fid_output_layer, images, outputs)
     print(f'FID score {fid_score}')
 
     # compile summary
