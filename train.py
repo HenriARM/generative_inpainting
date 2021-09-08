@@ -7,14 +7,14 @@ tf.compat.v1.disable_eager_execution()
 
 import neuralgymtf2 as ng
 from inpaint_model import InpaintCAModel
-import utils
-import argparse
+# import utils
+# import argparse
 import random
 
 
 FLAGS = ng.Config('inpaint.yml')
-ARTIFACT_CENTERED = True
-RANDOM_CROP = True
+# ARTIFACT_CENTERED = True
+# RANDOM_CROP = True
 IMAGE_SHAPE = FLAGS.img_shape
 DATASET_PATH = FLAGS.dataset_path
 IMAGE_SUFFIX = '.jpg'
