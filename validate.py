@@ -18,7 +18,12 @@ import tensorflow as tf
 from tensorflow.python.ops.gen_batch_ops import batch
 
 import neuralgymtf2 as ng
-FLAGS = ng.Config('inpaint.yml')
+
+parser = argparse.ArgumentParser()
+parser.add_argument('--config', help= 'config filepath')
+args = parser.parse_args()
+
+FLAGS = ng.Config(args.config)
 from inpaint_model import InpaintCAModel
 
 tf.get_logger().setLevel('ERROR')
@@ -310,9 +315,6 @@ def get_current_snapshot(ckpt):
     return int(snapshot.replace('\"', '').split('-')[-1])
     
 def main():
-    parser = argparse.ArgumentParser()
-    args = parser.parse_args()
-
     args.training_dir = '/home/henri/projects/deepfill/training'
     args.val_images_relpath = 'val_images'
     args.val_masks_relpath = 'val_masks'

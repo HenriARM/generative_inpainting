@@ -10,6 +10,10 @@ import neuralgymtf2 as ng
 import tensorflow as tf
 from inpaint_model import InpaintCAModel
 
+parser = argparse.ArgumentParser()
+parser.add_argument('--config', help= 'config filepath')
+args = parser.parse_args()
+
 tf.compat.v1.disable_eager_execution()
 
 CHECKPOINT_DIR = '/home/henri/projects/deepfill/models/mytrain'
@@ -44,7 +48,7 @@ OUTPUT_TENSOR_NAME = 'saturate_cast'
 # TODO: rewrite to send only image file_path
 # TODO: rewrite for multiple images [for each image byte array -> decode to (1, 256, 512, 3)] 
 def export_model():
-    FLAGS = ng.Config('inpaint.yml')
+    FLAGS = ng.Config(args.config)
     sess_config = tf.compat.v1.ConfigProto()
     sess_config.gpu_options.allow_growth = True
     sess = tf.compat.v1.Session(config=sess_config)
@@ -95,7 +99,7 @@ def export_model():
 
 
 def inference(image, mask):
-    FLAGS = ng.Config('inpaint.yml')
+    FLAGS = ng.Config(args.config)
     sess_config = tf.compat.v1.ConfigProto()
     sess_config.gpu_options.allow_growth = True
     sess = tf.compat.v1.Session(config=sess_config)
@@ -136,9 +140,6 @@ def inference(image, mask):
 
 
 def main():
-    parser = argparse.ArgumentParser()
-    args = parser.parse_args()
-
     args.dataset = '/home/henri/datasets/artifacts/panos/pan-21-07-2021/data'
     args.output_dir = './output'  # output directory
 

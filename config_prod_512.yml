@@ -1,0 +1,53 @@
+dataset_path: '/mnt/data/datasets/camera-inpainting/crop-512-training-pan-27-07-2021' #'/home/rudolfs/Desktop/trainings/training-pan-03-06-2021'
+
+# dataset
+centered: True
+
+# machine info
+num_gpus_per_job: 1  # number of gpus each job need (for i in range: tf.device(gpu:id))
+num_cpus_per_job: 1 #4  # number of gpus each job need
+num_hosts_per_job: 1
+memory_per_job: 32  # number of gpus each job need
+gpu_type: 'nvidia-tesla-p100'
+
+# parameters
+name: places2_gated_conv_v100  # any name
+model_restore: './training/checkpoints_512'
+# dataset: 'celebahq'  # 'tmnist', 'dtd', 'places2', 'celeba', 'imagenet', 'cityscapes'
+random_crop: False  # We send already cropped 256x256 images, set to False to dont crop it again # Set to false when dataset is 'celebahq', meaning only resize the images to img_shapes, instead of crop img_shapes from a larger raw image. This is useful when you train on images with different resolutions like places2. In these cases, please set random_crop to true.
+val: True  # true if you want to view validation results in tensorboard
+log_dir: './training/logs_512'
+
+gan: 'sngan'
+gan_loss_alpha: 1
+gan_with_mask: True
+discounted_mask: True
+random_seed: False
+padding: 'SAME'
+
+# training
+train_spe: 4000 # step per epoch
+max_iters: 100000000 # epoch total
+# epoch = max_iters / train_spe 
+viz_max_out: 10 # should be <= batch size
+val_psteps: 2000 # step per tensorboard visualisation (put <= than spe)
+
+# static_view_size: 3 # should be <= than validation dataset
+img_shape: [512, 512, 3]
+img_shapes: [512, 512, 3]
+height: 128
+width: 128
+max_delta_height: 32
+max_delta_width: 32
+batch_size: 16 #8
+vertical_margin: 0
+horizontal_margin: 0
+
+# loss
+ae_loss: True
+l1_loss: True
+l1_loss_alpha: 1.
+
+# to tune (adding edge channel)
+guided: False
+edge_threshold: 0.6
